@@ -90,7 +90,7 @@ TypeScript monorepo managed with pnpm workspaces. `@inkos/core` handles all agen
 ### Install
 
 ```bash
-git clone https://github.com/user/inkos.git
+git clone https://github.com/Narcooo/inkos.git
 cd inkos
 pnpm install
 pnpm build
