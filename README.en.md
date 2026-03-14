@@ -20,6 +20,75 @@
 
 Open-source multi-agent system that autonomously writes, audits, and revises novels — with human review gates that keep you in control.
 
+## v0.4 Update
+
+Spinoff writing + style cloning + post-write validator + audit-revise hardening.
+
+### Spinoff Writing
+
+Create prequels, sequels, side-stories, or what-if branches from existing books. Spinoffs share the parent's world and characters but have independent plot lines.
+
+```bash
+inkos import canon my-prequel --from main-novel   # Import parent canon
+inkos write next my-prequel                        # Writer auto-reads canon constraints
+```
+
+Generates `story/parent_canon.md` containing the parent's world rules, character snapshots (with information boundaries), key event timeline, and foreshadowing state. The auditor auto-activates 4 spinoff-specific dimensions:
+
+| Dimension | Checks |
+|-----------|--------|
+| Canon Event Conflict | Whether spinoff events contradict the parent's canon constraints |
+| Future Info Leak | Whether characters reference information revealed after the divergence point |
+| Cross-Book World Consistency | Whether the spinoff violates parent world rules (power systems, geography, factions) |
+| Spinoff Foreshadowing Isolation | Whether the spinoff oversteps by resolving parent foreshadowing |
+
+Auto-activates when `parent_canon.md` is detected. No extra configuration needed.
+
+### Style Cloning
+
+Feed in a real novel excerpt. The system extracts a statistical fingerprint + generates a qualitative style guide, then injects both into every chapter's Writer prompt.
+
+```bash
+inkos style analyze reference.txt                      # Analyze: sentence length, TTR, rhetorical features
+inkos style import reference.txt my-book --name "Author"  # Import style into book
+```
+
+Produces two files:
+- `style_profile.json` — statistical fingerprint (sentence/paragraph length distribution, vocabulary diversity, rhetorical density)
+- `style_guide.md` — LLM-generated qualitative guide (rhythm, tone, word preferences, taboos)
+
+The Writer reads the style guide every chapter; the Auditor cross-checks against it in the style dimension.
+
+### Post-Write Validator
+
+11 deterministic rules, zero LLM cost, fires immediately after each chapter:
+
+- Banned sentence patterns, dash prohibition, transition word density limits
+- High-fatigue word caps, meta-narration detection, report terminology in prose
+- Author sermonizing, collective shock cliches, consecutive "le" (了) character runs
+- Paragraph length checks (mobile-reading friendly), book-level prohibitions
+
+When the validator finds error-level violations, it auto-triggers `spot-fix` mode for targeted repair before the LLM audit even runs.
+
+### Audit-Revise Loop Hardening
+
+Real testing showed `rewrite` mode introduces 6x more AI markers than the original text. Now:
+
+- Auto-revise mode changed from `rewrite` to `spot-fix` (only fixes flagged sentences, leaves everything else untouched)
+- Post-revise AI marker guard: if revision increases AI tell count, the revision is discarded
+- Re-audit temperature locked to 0 (deterministic pass/fail gating)
+- `polish` mode boundaries strengthened (no adding paragraphs, renaming entities, or changing causality)
+
+### Other v0.4 Changes
+
+- Audit dimensions expanded from 26 to 32 (+4 spinoff dims + sensitive word check + reader expectation management)
+- Auditor web search: era-research genres can call DuckDuckGo to verify real events/people/geography
+- Scheduler rewrite: AI-paced (15min cycles), parallel book processing, immediate retry, daily cap
+- New `spot-fix` revise mode (targeted repair)
+- `additionalAuditDimensions` in `book_rules.md` now supports name-string matching
+
+---
+
 ## v0.3 Update
 
 Three-layer rule separation + cross-chapter memory + AIGC detection + Webhook.
@@ -112,13 +181,13 @@ fatigueWordsOverride: ["pupils constricted", "disbelief"]   # Override genre def
 
 Protagonist personality lock, numerical caps, custom prohibitions, fatigue word overrides — each book's rules are independent, without affecting the genre template.
 
-### 26-Dimension Audit
+### 32-Dimension Audit
 
-Auditing is broken down into 26 dimensions, with genre-appropriate subsets auto-enabled:
+Auditing is broken down into 32 dimensions, with genre-appropriate subsets auto-enabled:
 
 OOC check, timeline, setting conflicts, foreshadowing, pacing, writing style, information leaking, vocabulary fatigue, broken interest chains, side character intelligence drops, side character tool-ification, hollow payoffs, dialogue authenticity, padding detection, knowledge base contamination, POV consistency, power scaling collapse, numerical verification, era research, paragraph uniformity, hedge word density, formulaic transitions, list-like structure, subplot stagnation, flat emotional arc, monotonous pacing
 
-Xuanhuan/Xianxia: all 26 dimensions. Urban: 24 dimensions (including era research). Horror: 22 dimensions. Dims 20-23 (AI-tell detection) use a pure rule engine — no LLM calls consumed.
+Dims 20-23 (AI-tell detection) + dim 27 (sensitive words) use a pure rule engine — no LLM calls. Dims 28-31 (spinoff) auto-activate when `parent_canon.md` is detected. Dim 32 (reader expectation management) is always on.
 
 ### De-AI-ification
 
@@ -135,7 +204,7 @@ Vocabulary fatigue audit + AI-tell audit (dims 20-23) provide dual detection. St
 ### Other
 
 - Supports OpenAI + Anthropic native + all OpenAI-compatible endpoints
-- Reviser supports polish / rewrite / rework / anti-detect modes
+- Reviser supports polish / rewrite / rework / anti-detect / spot-fix modes
 - Genres without numerical systems skip resource ledger generation
 - All commands support `--json` structured output for OpenClaw / external agent integration
 - Auto-detect book-id when project has only one book
@@ -317,6 +386,7 @@ inkos up                          # Daemon mode
 | `inkos detect [id] [n]` | AIGC detection (`--all` for all chapters, `--stats` for statistics) |
 | `inkos style analyze <file>` | Analyze reference text to extract style fingerprint |
 | `inkos style import <file> [id]` | Import style fingerprint into a book |
+| `inkos import canon [id] --from <parent>` | Import parent canon for spinoff writing |
 | `inkos update` | Update to latest version |
 | `inkos up / down` | Start/stop daemon |
 
@@ -385,8 +455,12 @@ TypeScript monorepo managed with pnpm workspaces.
 - [x] Pluggable radar (RadarSource interface)
 - [x] External agent integration (OpenClaw, etc.)
 - [x] Genre customization + per-book rules (genre CLI + book_rules.md)
-- [x] 26-dimension continuity audit (including AI-tell detection)
+- [x] 32-dimension continuity audit (including AI-tell detection + spinoff dims)
 - [x] De-AI-ification rules + style fingerprint injection
+- [x] Spinoff writing (canon import + 4 audit dimensions + info boundary control)
+- [x] Style cloning (statistical fingerprint + LLM style guide + Writer injection)
+- [x] Post-write validator (11 hard rules + auto spot-fix)
+- [x] Audit-revise loop hardening (AI marker guard + temperature lock)
 - [x] Multi-LLM provider (OpenAI + Anthropic + compatible endpoints)
 - [x] AIGC detection + anti-detect rewrite pipeline
 - [x] Webhook notifications + smart scheduler (quality gates)
