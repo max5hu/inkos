@@ -13,7 +13,9 @@ test-project/
 .venv*/
 .gstack/
 .worktrees/
-docs/
+docs/*
+!docs/plans/
+!docs/plans/**
 novel-to-comic-research.docx
 .pnpm-store/
 tmp/
