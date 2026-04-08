@@ -45,8 +45,7 @@ export function buildWriterSystemPrompt(
         buildEnglishCoreRules(book),
         buildGovernedInputContract("en", governed),
         buildLengthGuidance(resolvedLengthSpec, "en"),
-        buildEnglishAntiAIRules(),
-        buildEnglishCharacterMethod(),
+        buildWritingCraftCard("en"),
         buildGenreRules(genreProfile, genreBody),
         buildProtagonistRules(bookRules),
         buildBookRulesBody(bookRulesBody),
@@ -55,7 +54,7 @@ export function buildWriterSystemPrompt(
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
         fanficContext ? buildCharacterVoiceProfiles(fanficContext.fanficCanon) : "",
         fanficContext ? buildFanficModeInstructions(fanficContext.fanficMode, fanficContext.allowedDeviations) : "",
-        buildEnglishPreWriteChecklist(book, genreProfile),
+        // Pre-write checklist moved to style_guide.md (v10)
         outputSection,
       ]
     : [
@@ -63,12 +62,7 @@ export function buildWriterSystemPrompt(
         buildCoreRules(resolvedLengthSpec),
         buildGovernedInputContract("zh", governed),
         buildLengthGuidance(resolvedLengthSpec, "zh"),
-        buildAntiAIExamples(),
-        buildCharacterPsychologyMethod(),
-        buildSupportingCharacterMethod(),
-        buildReaderPsychologyMethod(),
-        buildEmotionalPacingMethod(),
-        buildImmersionTechniques(),
+        buildWritingCraftCard("zh"),
         buildGoldenChaptersRules(chapterNumber, isEnglish ? "en" : "zh"),
         bookRules?.enableFullCastTracking ? buildFullCastTracking() : "",
         buildGenreRules(genreProfile, genreBody),
@@ -79,7 +73,7 @@ export function buildWriterSystemPrompt(
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
         fanficContext ? buildCharacterVoiceProfiles(fanficContext.fanficCanon) : "",
         fanficContext ? buildFanficModeInstructions(fanficContext.fanficMode, fanficContext.allowedDeviations) : "",
-        buildPreWriteChecklist(book, genreProfile),
+        // Pre-write checklist moved to style_guide.md (v10)
         outputSection,
       ];
 
@@ -360,7 +354,44 @@ function buildImmersionTechniques(): string {
 }
 
 // ---------------------------------------------------------------------------
-// 黄金三章（前3章特殊指令）
+// Writing Craft Card (v10: compact rules, replaces 9 full modules)
+// Full methodology is in style_guide.md; this is the always-on reminder.
+// ---------------------------------------------------------------------------
+
+function buildWritingCraftCard(language: "zh" | "en"): string {
+  if (language === "en") {
+    return `## Writing Craft Rules
+
+- **Emotion**: Externalize through action — never write "he felt angry", write "he crushed the teacup"
+- **Salt in soup**: Values conveyed through behavior, not slogans
+- **Supporting cast**: Every side character has their own agenda. Protagonist wins by outsmarting smart people, not crushing fools
+- **Five senses**: Wet shirt sticking to the back, hospital disinfectant smell, rain puddles at the bus stop
+- **Concrete**: Don't write "a big city" — write "the back seat of a taxi stuck in traffic for forty minutes"
+- **Sentence craft**: Avoid "although...however" / "nevertheless" / excessive "was". Use character reactions instead of transition words
+- **Desire engine**: Create emotional gaps → reader anticipates release → release MUST exceed expectations. 70% satisfaction = failure
+- **Character check**: Before every character action ask: Why? Does it match their profile? Would the reader find it jarring?
+- **Dialogue**: Different characters speak differently — vocabulary, sentence length, verbal tics, dialect traces
+- **Forbidden**: Info-dump character introductions / introducing 3+ new characters at once / "everyone gasped in unison"
+- **Escalation**: Bad things stack — each layer worse than the last. Not one setback, but setback → worse setback → even worse`;
+  }
+
+  return `## 写作铁律
+
+- **情绪**：用动作外化，不写"他感到愤怒"，写"他捏碎了茶杯，滚烫的茶水流过指缝"
+- **盐溶于汤**：价值观通过行为传达，不喊口号
+- **配角**：有自己的算盘和反击，主角压服聪明人不是碾压傻子
+- **五感**：潮湿的短袖黏在后背上、医院消毒水的味、雨天公交站的积水
+- **具体化**：不写"大城市"，写"三环堵了四十分钟的出租车后座"
+- **句式**：少用"虽然但是/然而/因此/了"，用角色内心吐槽替代转折词
+- **欲望驱动**：制造情绪缺口→读者期待释放→释放时超过预期。满足70%等于失败
+- **人设三问**：为什么这么做？符合人设吗？读者会觉得突兀吗？
+- **对话**：不同角色说话方式不同——用词习惯、句子长短、口头禅、方言痕迹
+- **禁止**：资料卡式介绍角色 / 一次引入超3个新角色 / 众人齐声惊呼
+- **升级**：坏事叠坏事，每层比上一层过分——被骂→手机掉了→直播课结束了→包子噎住了`;
+}
+
+// ---------------------------------------------------------------------------
+// 黄金开篇（中文3章/英文5章）
 // ---------------------------------------------------------------------------
 
 function buildGoldenChaptersRules(chapterNumber?: number, language?: string): string {

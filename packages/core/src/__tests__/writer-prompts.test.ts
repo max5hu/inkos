@@ -49,8 +49,9 @@ describe("buildWriterSystemPrompt", () => {
 
     expect(prompt).toContain("## 输入治理契约");
     expect(prompt).toContain("卷纲是默认规划");
-    // Writing methodology is now always injected regardless of mode
-    expect(prompt).toContain("六步走人物心理分析");
+    // v10: compact craft card replaces full methodology modules
+    expect(prompt).toContain("写作铁律");
+    expect(prompt).toContain("盐溶于汤");
     expect(prompt).toContain("黄金3章");
   });
 

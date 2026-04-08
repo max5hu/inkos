@@ -99,6 +99,25 @@ export class PlannerAgent extends BaseAgent {
       chapterSummaries,
     });
 
+    // ── Skill injection: translate writing methodology into concrete rules ──
+    this.injectStructuralSkills({
+      chapterNumber: input.chapterNumber,
+      language: input.book.language ?? "zh",
+      platform: input.book.platform,
+      mustKeep,
+      mustAvoid,
+      styleEmphasis,
+      hookAgenda,
+      cadence: analyzeChapterCadence({
+        language: this.isChineseLanguage(input.book.language) ? "zh" : "en",
+        rows: parseChapterSummariesMarkdown(chapterSummaries)
+          .filter((s) => s.chapter < input.chapterNumber)
+          .sort((a, b) => a.chapter - b.chapter)
+          .slice(-4)
+          .map((s) => ({ chapter: s.chapter, title: s.title, mood: s.mood, chapterType: s.chapterType })),
+      }),
+    });
+
     const intent = ChapterIntentSchema.parse({
       chapter: input.chapterNumber,
       goal,
@@ -820,6 +839,78 @@ export class PlannerAgent extends BaseAgent {
       return await readFile(path, "utf-8");
     } catch {
       return "(文件尚未创建)";
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Structural skill injection (v10)
+  // Translates writing methodology into concrete mustKeep/styleEmphasis rules.
+  // ---------------------------------------------------------------------------
+
+  private injectStructuralSkills(params: {
+    chapterNumber: number;
+    language: string;
+    platform: string;
+    mustKeep: string[];
+    mustAvoid: string[];
+    styleEmphasis: string[];
+    hookAgenda: { eligibleResolve: ReadonlyArray<string> };
+    cadence: ReturnType<typeof analyzeChapterCadence>;
+  }): void {
+    const ch = params.chapterNumber;
+    const isEn = params.language === "en";
+    const isTomato = params.platform === "tomato";
+
+    // S01: 黄金开篇
+    const goldenLimit = isEn ? 5 : 3;
+    const goldenRulesZh: Record<number, string> = {
+      1: "【黄金第1章】直接进入冲突场景，禁止背景介绍开头。第一段必须有动作或对话。核心矛盾本章浮出水面。最多2个场景3个角色。",
+      2: "【黄金第2章】主角的金手指/核心能力必须初现，通过具体事件展现。第一个小爽点在本章出现。继续收紧核心冲突，不引入新支线。",
+      3: "【黄金第3章】明确具体可衡量的短期目标（打败某人/获得某物/到达某处）。章尾钩子要最强——这是读者决定是否追读的关键章。",
+    };
+    const goldenRulesEn: Record<number, string> = {
+      1: "[Golden Ch1] Drop into conflict — no worldbuilding preamble. First paragraph: action or dialogue. Core conflict surfaces. Max 2 scenes, 3 characters.",
+      2: "[Golden Ch2] Reveal protagonist's edge through a concrete event. First small payoff lands. Tighten core conflict, no new subplots.",
+      3: "[Golden Ch3] Lock in a specific measurable short-term goal. Strong chapter-end hook — make-or-break for retention.",
+      4: "[Golden Ch4] First MAJOR payoff — reward reader investment. Raise emotional stakes: what protagonist stands to LOSE becomes clear.",
+      5: "[Golden Ch5] Raise stakes before paywall — new threat/complication. World expands. Strongest cliffhanger yet — conversion chapter.",
+    };
+    if (ch <= goldenLimit) {
+      const rule = isEn ? goldenRulesEn[ch] : goldenRulesZh[ch];
+      if (rule) params.mustKeep.push(rule);
+    }
+
+    // S02: 付费卡点 / 留存生死线
+    if (isTomato) {
+      // 番茄：免费模式，前3章是编辑签约+读者留存的生死线（和S01重叠）
+      // 不需要额外规则，S01已覆盖
+    } else if (isEn) {
+      // GoodNovel/Dreame：第6-8章付费墙
+      if (ch >= 5 && ch <= 8) {
+        params.mustKeep.push("[Paywall Zone] Reader hits paywall soon — chapter MUST end with an irresistible cliffhanger that makes paying feel inevitable.");
+      }
+    }
+
+    // S04: 日常段服务主线
+    if (params.cadence.moodPressure?.pressure !== "high") {
+      params.styleEmphasis.push(isEn
+        ? "If this chapter has quiet/daily scenes, each must plant a hook or advance a relationship — no pure filler. Every daily scene is bait for the main plot."
+        : '如果本章有日常/过渡段，每段必须埋伏笔或推关系。万物皆为主线的"饵"，纯填充即流水账。');
+    }
+
+    // S03: 情绪升压（补充已有的降调逻辑）
+    // 已有 moodDirective 处理连续高压→降调。这里处理反向：无压力时提醒升压
+    if (!params.cadence.moodPressure && ch > goldenLimit) {
+      params.styleEmphasis.push(isEn
+        ? "Recent chapters have been quiet — this chapter needs to escalate tension. Introduce a complication, confrontation, or revelation."
+        : "最近几章情绪偏平，本章必须升压——引入新冲突、对抗或揭秘。");
+    }
+
+    // S10+S11: 信息落差 + 欲望驱动（结合 hook 回收时机）
+    if (params.hookAgenda.eligibleResolve.length > 0) {
+      params.styleEmphasis.push(isEn
+        ? "A major hook is ready to resolve — maximize tension BEFORE the payoff. The release must exceed reader expectations. Satisfy 70% = failure."
+        : "有伏笔即将兑现——在兑现前把压制拉到最大。释放时必须超过读者预期，只满足70%等于失败。");
     }
   }
 }
