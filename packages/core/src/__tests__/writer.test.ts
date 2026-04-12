@@ -1224,10 +1224,14 @@ describe("WriterAgent", () => {
 
       expect(systemPrompt).not.toContain("Hook-A / Hook-B");
       expect(systemPrompt).toContain("真实 hook_id");
-      // Hook IDs from the brief should be sanitized by renderBriefAsNarrativeBlock
+      // Enum/identifier fields (hookId, movement, chapterType) are NOT sanitized —
+      // the writer needs them to understand which hook to move and what chapter type
+      // to write. Free-text fields (goal, instruction, targetEffect) ARE sanitized.
       expect(creativePrompt).not.toContain("## Hook Agenda");
-      expect(creativePrompt).not.toContain("mentor-oath");
-      expect(creativePrompt).not.toContain("ledger-fragment");
+      // hookIds appear verbatim in Hook Plan (identifiers, not free text)
+      expect(creativePrompt).toContain("mentor-oath");
+      expect(creativePrompt).toContain("ledger-fragment");
+      // But slug references INSIDE free text (targetEffect) are sanitized
       expect(creativePrompt).not.toContain("stale-ledger");
       expect(creativePrompt).not.toContain("H001");
       expect(creativePrompt).not.toContain("本章要做的");

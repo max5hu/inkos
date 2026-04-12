@@ -48,18 +48,22 @@ export function renderBriefAsNarrativeBlock(
   brief: ChapterBrief,
   language: "zh" | "en" = "zh",
 ): string {
+  // Sanitize free-text fields only. Enum/identifier fields (chapterType,
+  // beat.phase, hook.movement, hookId) are passed through verbatim to
+  // avoid HOOK_SLUG_PATTERN corrupting hyphenated values like
+  // "knife-twist", "partial-payoff", "golden-opening".
   const s = (text: string) => sanitizeNarrativeControlText(text, language);
   const isEn = language === "en";
 
   const sections: string[] = [];
 
-  // Goal
+  // Goal — free text, sanitize
   sections.push(`## ${isEn ? "Goal" : "目标"}\n- ${s(brief.goal)}`);
 
-  // Chapter type
-  sections.push(`## ${isEn ? "Chapter Type" : "章节类型"}\n- ${s(brief.chapterType)}`);
+  // Chapter type — enum value, do NOT sanitize
+  sections.push(`## ${isEn ? "Chapter Type" : "章节类型"}\n- ${brief.chapterType}`);
 
-  // Beat outline
+  // Beat outline — phase is enum, instruction is free text
   if (brief.beatOutline.length > 0) {
     const beats = brief.beatOutline
       .map((beat) => `- ${beat.phase}: ${s(beat.instruction)}`)
@@ -67,25 +71,25 @@ export function renderBriefAsNarrativeBlock(
     sections.push(`## ${isEn ? "Beat Outline" : "节拍大纲"}\n${beats}`);
   }
 
-  // Hook plan
+  // Hook plan — hookId and movement are identifiers, targetEffect is free text
   if (brief.hookPlan.length > 0) {
     const hooks = brief.hookPlan
-      .map((hook) => `- ${s(hook.hookId)} | ${hook.movement} | ${s(hook.targetEffect)}`)
+      .map((hook) => `- ${hook.hookId} | ${hook.movement} | ${s(hook.targetEffect)}`)
       .join("\n");
     sections.push(`## ${isEn ? "Hook Plan" : "伏笔计划"}\n${hooks}`);
   }
 
-  // Dormant reason
+  // Dormant reason — free text, sanitize
   if (brief.dormantReason) {
     sections.push(
       `## ${isEn ? "Dormant Hooks" : "按兵不动的伏笔"}\n- ${s(brief.dormantReason)}`,
     );
   }
 
-  // Props and setting
+  // Props and setting — proper nouns, do NOT sanitize
   if (brief.propsAndSetting.length > 0) {
     sections.push(
-      `## ${isEn ? "Props & Setting" : "道具与场景"}\n- ${brief.propsAndSetting.map(s).join(", ")}`,
+      `## ${isEn ? "Props & Setting" : "道具与场景"}\n- ${brief.propsAndSetting.join(", ")}`,
     );
   }
 
