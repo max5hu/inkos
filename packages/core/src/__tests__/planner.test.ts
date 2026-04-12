@@ -73,6 +73,73 @@ describe("PlannerAgent", () => {
     ]);
   });
 
+  /**
+   * Default chat mock installed on the prototype: echoes the derived goal
+   * from the planner user prompt as the brief's goal, so legacy
+   * goal-derivation tests keep working. Individual tests can override
+   * with their own vi.spyOn on a specific instance.
+   */
+  beforeEach(() => {
+    vi.spyOn(
+      PlannerAgent.prototype as unknown as { chat: (...args: unknown[]) => Promise<{ content: string }> },
+      "chat",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ).mockImplementation(async (...args: unknown[]) => {
+      const messages = args[0] as Array<{ role: string; content: string }>;
+      const userMsg = messages.find((m) => m.role === "user");
+      const content = userMsg?.content ?? "";
+
+      function isPlaceholder(line: string): boolean {
+        return /^\(.*\)$/.test(line) || /^\(文件尚未创建\)/.test(line);
+      }
+
+      // Extract first substantive line from a prompt section
+      function extractFirstContent(section: string): string | undefined {
+        const re = new RegExp(`## ${section}\\n([\\s\\S]*?)(?=\\n## |$)`);
+        const block = content.match(re)?.[1];
+        if (!block) return undefined;
+        const lines = block.split("\n").map((l) => l.trim()).filter(
+          (l) => l.length > 0 && !l.startsWith("#") && !isPlaceholder(l),
+        );
+        // Prefer non-bullet text, but fall back to first bullet stripped of "- "
+        const plain = lines.find((l) => !l.startsWith("-"));
+        if (plain) return plain;
+        // Join multiple bullet items for richer goal extraction (mimics deriveGoal combining)
+        return lines
+          .filter((l) => l.startsWith("- "))
+          .map((l) => l.slice(2))
+          .slice(0, 3)
+          .join("；") || undefined;
+      }
+
+      const goalSeed = extractFirstContent("Goal Seed");
+      const focus = extractFirstContent("Current Focus");
+      const authorIntent = extractFirstContent("Author Intent");
+      const goal = (goalSeed && goalSeed !== "(no matched outline slice)" ? goalSeed : undefined)
+        ?? focus
+        ?? authorIntent
+        ?? "advance the story";
+      const chapterMatch = content.match(/## Chapter\n(\d+)/);
+      const chapter = chapterMatch ? Number(chapterMatch[1]) : 3;
+
+      return {
+        content: JSON.stringify({
+          chapter,
+          goal,
+          chapterType: "推进",
+          isGoldenOpening: chapter <= 3,
+          beatOutline: [
+            { phase: "opening", instruction: "open scene" },
+            { phase: "development", instruction: "develop conflict" },
+            { phase: "hook", instruction: "end with hook" },
+          ],
+          hookPlan: [],
+          propsAndSetting: [],
+        }),
+      };
+    });
+  });
+
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
   });
@@ -192,14 +259,14 @@ describe("PlannerAgent", () => {
     });
 
     expect(result.intent.outlineNode).toContain("merchant guild's escape route");
-    expect(result.intent.goal).toContain("mentor debt confrontation");
-    expect(result.intent.goal).not.toContain("merchant guild's escape route");
+    // goal is now LLM-derived from brief; verify conflict detection still works
     expect(result.intent.conflicts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: "outline_vs_current_focus",
         resolution: "allow explicit current focus override",
       }),
     ]));
+    expect(result.brief).toBeDefined();
   });
 
   it("keeps external context above both outline anchors and current focus", async () => {
@@ -243,14 +310,14 @@ describe("PlannerAgent", () => {
       externalContext: "Ignore the canal pursuit for now and force the next chapter into the mentor debt confrontation.",
     });
 
-    expect(result.intent.goal).toContain("mentor debt confrontation");
-    expect(result.intent.goal).not.toContain("merchant guild's escape route");
+    // goal is now LLM-derived; verify conflict detection for external override
     expect(result.intent.conflicts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: "outline_vs_request",
         resolution: "allow local outline deferral",
       }),
     ]));
+    expect(result.brief).toBeDefined();
   });
 
   it("emits structured directives when fallback planning, chapter type repetition, and title collapse stack up", async () => {
@@ -318,10 +385,11 @@ describe("PlannerAgent", () => {
       chapterNumber: 4,
     });
 
-    expect(result.intent.arcDirective).toContain("fallback");
-    expect(result.intent.sceneDirective).toContain("investigation");
-    expect(result.intent.titleDirective?.toLowerCase()).toContain("ledger");
-    expect(result.intent.moodDirective).toBeUndefined();
+    // With LLM brief path, arc/scene directives are derived from the brief
+    expect(result.intent.arcDirective).toBeDefined();
+    expect(result.intent.sceneDirective).toBeDefined();
+    expect(result.brief).toBeDefined();
+    expect(result.brief.beatOutline.length).toBeGreaterThanOrEqual(1);
   });
 
   it("emits a mood directive when recent chapters are all high-tension", async () => {
@@ -1099,8 +1167,8 @@ describe("PlannerAgent", () => {
       chapterNumber: 2,
     });
 
-    expect(result.intent.goal).toContain("private confrontation");
-    expect(result.intent.goal).toContain("missing record");
+    // goal is now LLM-derived from brief; verify other code-derived fields
+    expect(result.brief).toBeDefined();
     expect(result.intent.mustAvoid).toEqual(expect.arrayContaining([
       "Do not turn this chapter into a citywide survey of every faction.",
       "Do not use summary-heavy moralizing paragraphs.",
@@ -1518,14 +1586,14 @@ describe("PlannerAgent", () => {
       chapterNumber: 3,
     });
 
-    expect(result.brief?.chapterType).toBe("confrontation");
+    expect(result.brief.chapterType).toBe("confrontation");
     expect(result.intent.goal).toContain("warehouse confrontation");
     expect(result.intent.arcDirective).toContain("opening: Open inside the warehouse argument.");
     expect(result.intent.sceneDirective).toContain("warehouse transfer sheet");
     await expect(readFile(result.runtimePath, "utf-8")).resolves.toContain("## Chapter Brief");
   });
 
-  it("falls back to the legacy planner when the LLM chapter brief is invalid", async () => {
+  it("throws when the LLM chapter brief is invalid", async () => {
     const planner = new PlannerAgent({
       client: {} as ConstructorParameters<typeof PlannerAgent>[0]["client"],
       model: "test-model",
@@ -1538,14 +1606,10 @@ describe("PlannerAgent", () => {
         content: "{\"bad\":true}",
       });
 
-    const result = await planner.planChapter({
+    await expect(planner.planChapter({
       book,
       bookDir,
       chapterNumber: 3,
-    });
-
-    expect(result.brief).toBeUndefined();
-    expect(result.intent.goal).toContain("merchant guild's escape route");
-    await expect(readFile(result.runtimePath, "utf-8")).resolves.not.toContain("## Chapter Brief");
+    })).rejects.toThrow("Planner LLM returned invalid ChapterBrief JSON");
   });
 });

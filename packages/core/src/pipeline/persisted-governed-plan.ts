@@ -36,6 +36,11 @@ export async function loadPersistedPlan(
       })
       .filter((conflict): conflict is { type: string; resolution: string } => conflict !== null);
 
+    const brief = parsePersistedChapterBrief(sections, chapterNumber);
+    if (!brief) {
+      return null;
+    }
+
     return {
       intent: ChapterIntentSchema.parse({
         chapter: chapterNumber,
@@ -46,7 +51,7 @@ export async function loadPersistedPlan(
         styleEmphasis: readIntentList(sections, "Style Emphasis"),
         conflicts,
       }),
-      brief: parsePersistedChapterBrief(sections, chapterNumber),
+      brief,
       intentMarkdown,
       plannerInputs: [runtimePath],
       runtimePath,

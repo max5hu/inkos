@@ -36,7 +36,7 @@ export interface PlanChapterInput {
 
 export interface PlanChapterOutput {
   readonly intent: ChapterIntent;
-  readonly brief?: ChapterBrief;
+  readonly brief: ChapterBrief;
   readonly intentMarkdown: string;
   readonly plannerInputs: ReadonlyArray<string>;
   readonly runtimePath: string;
@@ -98,49 +98,22 @@ export class PlannerAgent extends BaseAgent {
       chapterSummaries: materials.chapterSummariesRaw,
     });
 
-    const brief = await this.tryPlanChapterBrief({
+    const brief = await this.planChapterBrief({
       input,
       outlineNode: planningAnchor,
       materials,
     });
 
-    if (!brief) {
-      // TODO(v10): delete this skill-to-mustKeep bridge once the LLM planner lands.
-      this.injectStructuralSkills({
-        chapterNumber: input.chapterNumber,
-        language: input.book.language ?? "zh",
-        platform: input.book.platform,
-        mustKeep,
-        mustAvoid,
-        styleEmphasis,
-        hookAgenda,
-        cadence: analyzeChapterCadence({
-          language: this.isChineseLanguage(input.book.language) ? "zh" : "en",
-          rows: parseChapterSummariesMarkdown(materials.chapterSummariesRaw)
-            .filter((s) => s.chapter < input.chapterNumber)
-            .sort((a, b) => a.chapter - b.chapter)
-            .slice(-4)
-            .map((s) => ({ chapter: s.chapter, title: s.title, mood: s.mood, chapterType: s.chapterType })),
-        }),
-      });
-    }
-
     const intent = ChapterIntentSchema.parse({
       chapter: input.chapterNumber,
-      goal: brief?.goal ?? goal,
+      goal: brief.goal,
       outlineNode,
       ...directives,
       mustKeep,
       mustAvoid,
-      styleEmphasis: brief
-        ? this.mergeBriefStyleEmphasis(styleEmphasis, brief)
-        : styleEmphasis,
-      sceneDirective: brief
-        ? this.buildSceneDirectiveFromBrief(brief)
-        : directives.sceneDirective,
-      arcDirective: brief
-        ? this.buildArcDirectiveFromBrief(brief)
-        : directives.arcDirective,
+      styleEmphasis: this.mergeBriefStyleEmphasis(styleEmphasis, brief),
+      sceneDirective: this.buildSceneDirectiveFromBrief(brief),
+      arcDirective: this.buildArcDirectiveFromBrief(brief),
       conflicts,
       hookAgenda,
     });
@@ -148,7 +121,7 @@ export class PlannerAgent extends BaseAgent {
     const runtimePath = join(runtimeDir, `chapter-${String(input.chapterNumber).padStart(4, "0")}.intent.md`);
     const intentMarkdown = this.renderIntentMarkdown(
       intent,
-      brief ?? undefined,
+      brief,
       input.book.language ?? "zh",
       renderHookSnapshot(memorySelection.hooks, input.book.language ?? "zh"),
       renderSummarySnapshot(memorySelection.summaries, input.book.language ?? "zh"),
@@ -158,53 +131,47 @@ export class PlannerAgent extends BaseAgent {
 
     return {
       intent,
-      brief: brief ?? undefined,
+      brief,
       intentMarkdown,
       plannerInputs: materials.plannerInputs,
       runtimePath,
     };
   }
 
-  private async tryPlanChapterBrief(params: {
+  private async planChapterBrief(params: {
     readonly input: PlanChapterInput;
     readonly outlineNode: string | undefined;
     readonly materials: PlanningMaterials;
-  }): Promise<ChapterBrief | null> {
-    try {
-      const language = this.isChineseLanguage(params.input.book.language) ? "zh" : "en";
-      const response = await this.chat([
-        {
-          role: "system",
-          content: buildPlannerSystemPrompt(language),
-        },
-        {
-          role: "user",
-          content: buildPlannerUserPrompt({
-            chapterNumber: params.input.chapterNumber,
-            targetChapters: params.input.book.targetChapters,
-            genreName: params.input.book.genre,
-            language,
-            materials: {
-              ...params.materials,
-              outlineNode: params.outlineNode,
-            },
-          }),
-        },
-      ], {
-        temperature: 0.2,
-        maxTokens: 1600,
-      });
+  }): Promise<ChapterBrief> {
+    const language = this.isChineseLanguage(params.input.book.language) ? "zh" : "en";
+    const response = await this.chat([
+      {
+        role: "system",
+        content: buildPlannerSystemPrompt(language),
+      },
+      {
+        role: "user",
+        content: buildPlannerUserPrompt({
+          chapterNumber: params.input.chapterNumber,
+          targetChapters: params.input.book.targetChapters,
+          genreName: params.input.book.genre,
+          language,
+          materials: {
+            ...params.materials,
+            outlineNode: params.outlineNode,
+          },
+        }),
+      },
+    ], {
+      temperature: 0.2,
+      maxTokens: 1600,
+    });
 
-      const parsed = this.tryParseChapterBrief(response.content);
-      if (!parsed) {
-        throw new Error("Planner brief output was not valid JSON.");
-      }
-      return parsed;
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      this.log?.warn(`[planner] Falling back to legacy planner: ${detail}`);
-      return null;
+    const parsed = this.tryParseChapterBrief(response.content);
+    if (!parsed) {
+      throw new Error(`Planner LLM returned invalid ChapterBrief JSON. Raw output: ${response.content.slice(0, 200)}`);
     }
+    return parsed;
   }
 
   private tryParseChapterBrief(text: string): ChapterBrief | null {

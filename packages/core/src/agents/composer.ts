@@ -95,19 +95,17 @@ async function collectSelectedContext(
   language: "zh" | "en",
 ): Promise<ContextPackage["selectedContext"]> {
     const retrievalHints = deriveRetrievalHints(plan);
-    const chapterBriefEntry = plan.brief
-      ? [{
-          source: "runtime/chapter_brief",
-          reason: "Carry the planner's concrete chapter execution brief directly into governed writing.",
-          excerpt: [
-            `type=${plan.brief.chapterType}`,
-            ...plan.brief.beatOutline.map((beat) => `${beat.phase}: ${beat.instruction}`),
-            ...(plan.brief.propsAndSetting.length > 0
-              ? [`props=${plan.brief.propsAndSetting.join(", ")}`]
-              : []),
-          ].join(" | "),
-        }]
-      : [];
+    const chapterBriefEntry = [{
+      source: "runtime/chapter_brief",
+      reason: "Carry the planner's concrete chapter execution brief directly into governed writing.",
+      excerpt: [
+        `type=${plan.brief.chapterType}`,
+        ...plan.brief.beatOutline.map((beat) => `${beat.phase}: ${beat.instruction}`),
+        ...(plan.brief.propsAndSetting.length > 0
+          ? [`props=${plan.brief.propsAndSetting.join(", ")}`]
+          : []),
+      ].join(" | "),
+    }];
 
     const entries = await Promise.all([
       maybeContextSource(storyDir, "current_focus.md", "Current task focus for this chapter."),
@@ -200,10 +198,6 @@ async function collectSelectedContext(
 }
 
 function deriveRetrievalHints(plan: PlanChapterOutput): string[] {
-  if (!plan.brief) {
-    return plan.intent.mustKeep;
-  }
-
   return [
     ...plan.brief.propsAndSetting,
     ...plan.brief.hookPlan.flatMap((entry) => [entry.hookId, entry.targetEffect]),
@@ -319,7 +313,7 @@ async function buildHookDebtEntries(
 ): Promise<ContextPackage["selectedContext"]> {
     const targetHookIds = [
       ...new Set([
-        ...(plan.brief?.hookPlan.map((entry) => entry.hookId) ?? []),
+        ...plan.brief.hookPlan.map((entry) => entry.hookId),
         ...plan.intent.hookAgenda.pressureMap.map((entry) => entry.hookId),
         ...plan.intent.hookAgenda.eligibleResolve,
         ...plan.intent.hookAgenda.mustAdvance,
