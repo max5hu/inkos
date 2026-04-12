@@ -908,6 +908,7 @@ export class PipelineRunner {
         reviseControlInput
           ? {
               chapterIntent: reviseControlInput.plan.intentMarkdown,
+              chapterBrief: reviseControlInput.plan.brief,
               contextPackage: reviseControlInput.composed.contextPackage,
               ruleStack: reviseControlInput.composed.ruleStack,
               lengthSpec,
@@ -1168,6 +1169,7 @@ export class PipelineRunner {
     const reducedControlInput = writeInput.chapterIntent && writeInput.contextPackage && writeInput.ruleStack
       ? {
           chapterIntent: writeInput.chapterIntent,
+          chapterBrief: writeInput.chapterBrief,
           contextPackage: writeInput.contextPackage,
           ruleStack: writeInput.ruleStack,
         }

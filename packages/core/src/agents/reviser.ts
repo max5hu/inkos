@@ -3,7 +3,7 @@ import type { GenreProfile } from "../models/genre-profile.js";
 import type { BookRules } from "../models/book-rules.js";
 import type { LengthSpec } from "../models/length-governance.js";
 import type { AuditIssue } from "./continuity.js";
-import type { ContextPackage, RuleStack } from "../models/input-governance.js";
+import type { ChapterBrief, ContextPackage, RuleStack } from "../models/input-governance.js";
 import { readGenreProfile, readBookLanguage, readBookRules } from "./rules-reader.js";
 import { countChapterLength } from "../utils/length-metrics.js";
 import { buildGovernedMemoryEvidenceBlocks } from "../utils/governed-context.js";
@@ -16,6 +16,7 @@ import {
 import { applySpotFixPatches, parseSpotFixPatches } from "../utils/spot-fix-patches.js";
 import {
   buildNarrativeIntentBrief,
+  renderBriefAsNarrativeBlock,
   renderNarrativeSelectedContext,
   sanitizeNarrativeEvidenceBlock,
 } from "../utils/narrative-control.js";
@@ -115,6 +116,7 @@ export class ReviserAgent extends BaseAgent {
     genre?: string,
     options?: {
       chapterIntent?: string;
+      chapterBrief?: ChapterBrief;
       contextPackage?: ContextPackage;
       ruleStack?: RuleStack;
       lengthSpec?: LengthSpec;
@@ -235,8 +237,8 @@ export class ReviserAgent extends BaseAgent {
     const fanficCanonBlock = hasFanficCanon
       ? `\n## 同人正典参照（修稿专用）\n本书为同人作品。修改时参照正典角色档案和世界规则，不可违反正典事实。角色对话必须保留原作语癖。\n${fanficCanon}\n`
       : "";
-    const reducedControlBlock = options?.chapterIntent && options.contextPackage && options.ruleStack
-      ? this.buildReducedControlBlock(options.chapterIntent, options.contextPackage, options.ruleStack)
+    const reducedControlBlock = options?.contextPackage && options.ruleStack
+      ? this.buildReducedControlBlock(options.chapterBrief, options.chapterIntent, options.contextPackage, options.ruleStack)
       : "";
     // Length guardrail only in legacy modes — auto mode delegates length to normalize.
     const lengthGuidanceBlock = mode !== "auto" && options?.lengthSpec
@@ -542,7 +544,8 @@ ${outputFormat}`;
   }
 
   private buildReducedControlBlock(
-    chapterIntent: string,
+    brief: ChapterBrief | undefined,
+    chapterIntent: string | undefined,
     contextPackage: ContextPackage,
     ruleStack: RuleStack,
   ): string {
@@ -553,10 +556,15 @@ ${outputFormat}`;
         .map((override) => `- ${override.from} -> ${override.to}: ${override.reason} (${override.target})`)
         .join("\n")
       : "- none";
-    const narrativeIntent = buildNarrativeIntentBrief(chapterIntent, "zh");
+    // Prefer brief-based narrative block; fall back to legacy intent markdown
+    const narrativeBlock = brief
+      ? renderBriefAsNarrativeBlock(brief, "zh")
+      : chapterIntent
+        ? buildNarrativeIntentBrief(chapterIntent, "zh")
+        : "(无)";
 
     return `\n## 本章控制输入（由 Planner/Composer 编译）
-${narrativeIntent || "(无)"}
+${narrativeBlock}
 
 ### 已选上下文
 ${selectedContext || "- none"}
