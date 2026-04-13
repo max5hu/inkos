@@ -337,6 +337,223 @@ function appendToolEvents(
   }), session);
 }
 
+interface RuntimeRequestHelpers {
+  readonly language: RuntimeLanguage;
+  readonly addEvent: (
+    nextSession: InteractionSession,
+    kind: string,
+    status: InteractionEvent["status"],
+    detail: string,
+  ) => InteractionSession;
+  readonly markCompleted: (nextSession: InteractionSession) => InteractionSession;
+}
+
+async function handleDraftLifecycleRequest(params: {
+  readonly session: InteractionSession;
+  readonly request: InteractionRequest;
+  readonly tools: InteractionRuntimeTools;
+  readonly helpers: RuntimeRequestHelpers;
+}): Promise<InteractionRuntimeResult | undefined> {
+  const { session, request, tools, helpers } = params;
+  const { language, addEvent, markCompleted } = helpers;
+
+  switch (request.intent) {
+    case "develop_book": {
+      if (!tools.developBookDraft) {
+        throw new Error(localize(language, {
+          zh: "创作草案会话暂未实现。",
+          en: "Book-draft ideation is not implemented yet.",
+        }));
+      }
+      if (!request.instruction) {
+        throw new Error(localize(language, {
+          zh: "创作草案需要一条用户输入。",
+          en: "Book-draft ideation requires user input.",
+        }));
+      }
+      const toolResult = await tools.developBookDraft(request.instruction, session.creationDraft);
+      const metadata = extractToolMetadata(toolResult);
+      const draft = metadata.details?.creationDraft as InteractionSession["creationDraft"] | undefined;
+      if (!draft) {
+        throw new Error(localize(language, {
+          zh: "创作草案工具没有返回草案数据。",
+          en: "Book-draft tool did not return draft data.",
+        }));
+      }
+      const nextSession = appendToolEvents(updateCreationDraft(session, draft), metadata.events);
+      const completed = {
+        ...markCompleted(nextSession),
+        currentExecution: metadata.currentExecution ?? markCompleted(nextSession).currentExecution,
+      };
+      return {
+        session: addEvent(completed, "task.completed", "completed", localize(language, {
+          zh: "已更新创作草案。",
+          en: "Updated the book draft.",
+        })),
+        responseText: metadata.responseText ?? localize(language, {
+          zh: "已更新创作草案。",
+          en: "Updated the book draft.",
+        }),
+        details: metadata.details,
+      };
+    }
+    case "show_book_draft": {
+      if (!session.creationDraft) {
+        return {
+          session: markCompleted(session),
+          responseText: localize(language, {
+            zh: "当前还没有创作草案。先告诉我你想写什么，再逐步把书收出来。",
+            en: "There is no active book draft yet. Start by telling me what you want to write.",
+          }),
+        };
+      }
+      return {
+        session: markCompleted(session),
+        responseText: renderCreationDraft(session.creationDraft, language),
+      };
+    }
+    case "create_book": {
+      if (!tools.createBook) {
+        throw new Error(localize(language, {
+          zh: "交互运行时暂未实现创建作品。",
+          en: "Book creation is not implemented in the interaction runtime yet.",
+        }));
+      }
+      const effectiveDraft = session.creationDraft;
+      const title = request.title ?? effectiveDraft?.title;
+      if (!title) {
+        throw new Error(localize(language, {
+          zh: "创建作品需要标题。",
+          en: "Book creation requires a title.",
+        }));
+      }
+      const toolResult = await tools.createBook({
+        title,
+        genre: request.genre ?? effectiveDraft?.genre,
+        platform: request.platform ?? effectiveDraft?.platform,
+        language: request.language ?? effectiveDraft?.language,
+        chapterWordCount: request.chapterWordCount ?? effectiveDraft?.chapterWordCount,
+        targetChapters: request.targetChapters ?? effectiveDraft?.targetChapters,
+        blurb: request.blurb ?? effectiveDraft?.blurb,
+        worldPremise: request.worldPremise ?? effectiveDraft?.worldPremise,
+        settingNotes: request.settingNotes ?? effectiveDraft?.settingNotes,
+        protagonist: request.protagonist ?? effectiveDraft?.protagonist,
+        supportingCast: request.supportingCast ?? effectiveDraft?.supportingCast,
+        conflictCore: request.conflictCore ?? effectiveDraft?.conflictCore,
+        volumeOutline: request.volumeOutline ?? effectiveDraft?.volumeOutline,
+        constraints: request.constraints ?? effectiveDraft?.constraints,
+        authorIntent: request.authorIntent ?? effectiveDraft?.authorIntent,
+        currentFocus: request.currentFocus ?? effectiveDraft?.currentFocus,
+      });
+      const metadata = extractToolMetadata(toolResult);
+      const createdBookId = typeof toolResult === "object" && toolResult !== null && "bookId" in toolResult
+        && typeof (toolResult as { bookId?: unknown }).bookId === "string"
+        ? (toolResult as { bookId: string }).bookId
+        : undefined;
+      if (!createdBookId) {
+        throw new Error(localize(language, {
+          zh: "创建作品工具没有返回作品 ID。",
+          en: "Create-book tool did not return a book id.",
+        }));
+      }
+      const nextSession = appendToolEvents(
+        clearCreationDraft(bindActiveBook(session, createdBookId)),
+        metadata.events,
+      );
+      const completed = {
+        ...markCompleted(nextSession),
+        currentExecution: metadata.currentExecution ?? markCompleted(nextSession).currentExecution,
+      };
+      return {
+        session: addEvent(completed, "task.completed", "completed", localize(language, {
+          zh: `已创建作品 ${createdBookId}。`,
+          en: `Created ${createdBookId}.`,
+        })),
+        responseText: metadata.responseText ?? localize(language, {
+          zh: `已创建作品 ${createdBookId}。`,
+          en: `Created ${createdBookId}.`,
+        }),
+        details: metadata.details,
+      };
+    }
+    case "discard_book_draft": {
+      const completed = markCompleted(clearCreationDraft(session));
+      return {
+        session: addEvent(completed, "task.completed", "completed", localize(language, {
+          zh: "已丢弃当前创作草案。",
+          en: "Discarded the current book draft.",
+        })),
+        responseText: localize(language, {
+          zh: "已丢弃当前创作草案。",
+          en: "Discarded the current book draft.",
+        }),
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
+async function handleBookSelectionRequest(params: {
+  readonly session: InteractionSession;
+  readonly request: InteractionRequest;
+  readonly tools: InteractionRuntimeTools;
+  readonly helpers: RuntimeRequestHelpers;
+}): Promise<InteractionRuntimeResult | undefined> {
+  const { session, request, tools, helpers } = params;
+  const { language, addEvent, markCompleted } = helpers;
+
+  switch (request.intent) {
+    case "list_books": {
+      const books = await tools.listBooks();
+      const completed = markCompleted(session);
+      return {
+        session: addEvent(completed, "task.completed", "completed", localize(language, {
+          zh: `已列出 ${books.length} 本作品。`,
+          en: `Listed ${books.length} book(s).`,
+        })),
+        responseText: books.length > 0
+          ? localize(language, {
+              zh: `作品列表：${books.join("、")}`,
+              en: `Books: ${books.join(", ")}`,
+            })
+          : localize(language, {
+              zh: "当前项目下没有作品。",
+              en: "No books found in this project.",
+            }),
+      };
+    }
+    case "select_book": {
+      if (!request.bookId) {
+        throw new Error(localize(language, {
+          zh: "切换作品需要提供作品 ID。",
+          en: "Book selection requires a book id.",
+        }));
+      }
+      const books = await tools.listBooks();
+      if (!books.includes(request.bookId)) {
+        throw new Error(localize(language, {
+          zh: `当前项目中找不到作品「${request.bookId}」。`,
+          en: `Book "${request.bookId}" not found in this project.`,
+        }));
+      }
+      const completed = markCompleted(bindActiveBook(session, request.bookId));
+      return {
+        session: addEvent(completed, "task.completed", "completed", localize(language, {
+          zh: `已切换当前作品到 ${request.bookId}。`,
+          en: `Bound active book to ${request.bookId}.`,
+        })),
+        responseText: localize(language, {
+          zh: `当前作品：${request.bookId}`,
+          en: `Active book: ${request.bookId}`,
+        }),
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
 export async function runInteractionRequest(params: {
   readonly session: InteractionSession;
   readonly request: InteractionRequest;
@@ -385,137 +602,33 @@ export async function runInteractionRequest(params: {
     },
   });
 
+  const helperContext: RuntimeRequestHelpers = {
+    language,
+    addEvent,
+    markCompleted,
+  };
+
+  const draftLifecycleResult = await handleDraftLifecycleRequest({
+    session,
+    request,
+    tools: params.tools,
+    helpers: helperContext,
+  });
+  if (draftLifecycleResult) {
+    return draftLifecycleResult;
+  }
+
+  const bookSelectionResult = await handleBookSelectionRequest({
+    session,
+    request,
+    tools: params.tools,
+    helpers: helperContext,
+  });
+  if (bookSelectionResult) {
+    return bookSelectionResult;
+  }
+
   switch (request.intent) {
-    case "develop_book": {
-      if (!params.tools.developBookDraft) {
-        throw new Error(localize(language, {
-          zh: "创作草案会话暂未实现。",
-          en: "Book-draft ideation is not implemented yet.",
-        }));
-      }
-      if (!request.instruction) {
-        throw new Error(localize(language, {
-          zh: "创作草案需要一条用户输入。",
-          en: "Book-draft ideation requires user input.",
-        }));
-      }
-      const toolResult = await params.tools.developBookDraft(request.instruction, session.creationDraft);
-      const metadata = extractToolMetadata(toolResult);
-      const draft = metadata.details?.creationDraft as InteractionSession["creationDraft"] | undefined;
-      if (!draft) {
-        throw new Error(localize(language, {
-          zh: "创作草案工具没有返回草案数据。",
-          en: "Book-draft tool did not return draft data.",
-        }));
-      }
-      session = updateCreationDraft(session, draft);
-      session = appendToolEvents(session, metadata.events);
-      const completed = {
-        ...markCompleted(session),
-        currentExecution: metadata.currentExecution ?? markCompleted(session).currentExecution,
-      };
-      return {
-        session: addEvent(completed, "task.completed", "completed", localize(language, {
-          zh: "已更新创作草案。",
-          en: "Updated the book draft.",
-        })),
-        responseText: metadata.responseText ?? localize(language, {
-          zh: "已更新创作草案。",
-          en: "Updated the book draft.",
-        }),
-        details: metadata.details,
-      };
-    }
-    case "show_book_draft": {
-      if (!session.creationDraft) {
-        return {
-          session: markCompleted(session),
-          responseText: localize(language, {
-            zh: "当前还没有创作草案。先告诉我你想写什么，再逐步把书收出来。",
-            en: "There is no active book draft yet. Start by telling me what you want to write.",
-          }),
-        };
-      }
-      return {
-        session: markCompleted(session),
-        responseText: renderCreationDraft(session.creationDraft, language),
-      };
-    }
-    case "create_book": {
-      if (!params.tools.createBook) {
-        throw new Error(localize(language, {
-          zh: "交互运行时暂未实现创建作品。",
-          en: "Book creation is not implemented in the interaction runtime yet.",
-        }));
-      }
-      const effectiveDraft = session.creationDraft;
-      const title = request.title ?? effectiveDraft?.title;
-      if (!title) {
-        throw new Error(localize(language, {
-          zh: "创建作品需要标题。",
-          en: "Book creation requires a title.",
-        }));
-      }
-      const toolResult = await params.tools.createBook({
-        title,
-        genre: request.genre ?? effectiveDraft?.genre,
-        platform: request.platform ?? effectiveDraft?.platform,
-        language: request.language ?? effectiveDraft?.language,
-        chapterWordCount: request.chapterWordCount ?? effectiveDraft?.chapterWordCount,
-        targetChapters: request.targetChapters ?? effectiveDraft?.targetChapters,
-        blurb: request.blurb ?? effectiveDraft?.blurb,
-        worldPremise: request.worldPremise ?? effectiveDraft?.worldPremise,
-        settingNotes: request.settingNotes ?? effectiveDraft?.settingNotes,
-        protagonist: request.protagonist ?? effectiveDraft?.protagonist,
-        supportingCast: request.supportingCast ?? effectiveDraft?.supportingCast,
-        conflictCore: request.conflictCore ?? effectiveDraft?.conflictCore,
-        volumeOutline: request.volumeOutline ?? effectiveDraft?.volumeOutline,
-        constraints: request.constraints ?? effectiveDraft?.constraints,
-        authorIntent: request.authorIntent ?? effectiveDraft?.authorIntent,
-        currentFocus: request.currentFocus ?? effectiveDraft?.currentFocus,
-      });
-      const metadata = extractToolMetadata(toolResult);
-      const createdBookId = typeof toolResult === "object" && toolResult !== null && "bookId" in toolResult
-        && typeof (toolResult as { bookId?: unknown }).bookId === "string"
-        ? (toolResult as { bookId: string }).bookId
-        : undefined;
-      if (!createdBookId) {
-        throw new Error(localize(language, {
-          zh: "创建作品工具没有返回作品 ID。",
-          en: "Create-book tool did not return a book id.",
-        }));
-      }
-      session = clearCreationDraft(bindActiveBook(session, createdBookId));
-      session = appendToolEvents(session, metadata.events);
-      const completed = {
-        ...markCompleted(session),
-        currentExecution: metadata.currentExecution ?? markCompleted(session).currentExecution,
-      };
-      return {
-        session: addEvent(completed, "task.completed", "completed", localize(language, {
-          zh: `已创建作品 ${createdBookId}。`,
-          en: `Created ${createdBookId}.`,
-        })),
-        responseText: metadata.responseText ?? localize(language, {
-          zh: `已创建作品 ${createdBookId}。`,
-          en: `Created ${createdBookId}.`,
-        }),
-        details: metadata.details,
-      };
-    }
-    case "discard_book_draft": {
-      const completed = markCompleted(clearCreationDraft(session));
-      return {
-        session: addEvent(completed, "task.completed", "completed", localize(language, {
-          zh: "已丢弃当前创作草案。",
-          en: "Discarded the current book draft.",
-        })),
-        responseText: localize(language, {
-          zh: "已丢弃当前创作草案。",
-          en: "Discarded the current book draft.",
-        }),
-      };
-    }
     case "write_next":
     case "continue_book": {
       const bookId = request.bookId ?? session.activeBookId;
@@ -561,51 +674,6 @@ export async function runInteractionRequest(params: {
                 en: `Completed write_next for ${bookId}.`,
               })
         ),
-      };
-    }
-    case "list_books": {
-      const books = await params.tools.listBooks();
-      const completed = markCompleted(session);
-      return {
-        session: addEvent(completed, "task.completed", "completed", localize(language, {
-          zh: `已列出 ${books.length} 本作品。`,
-          en: `Listed ${books.length} book(s).`,
-        })),
-        responseText: books.length > 0
-          ? localize(language, {
-              zh: `作品列表：${books.join("、")}`,
-              en: `Books: ${books.join(", ")}`,
-            })
-          : localize(language, {
-              zh: "当前项目下没有作品。",
-              en: "No books found in this project.",
-            }),
-      };
-    }
-    case "select_book": {
-      if (!request.bookId) {
-        throw new Error(localize(language, {
-          zh: "切换作品需要提供作品 ID。",
-          en: "Book selection requires a book id.",
-        }));
-      }
-      const books = await params.tools.listBooks();
-      if (!books.includes(request.bookId)) {
-        throw new Error(localize(language, {
-          zh: `当前项目中找不到作品「${request.bookId}」。`,
-          en: `Book "${request.bookId}" not found in this project.`,
-        }));
-      }
-      const completed = markCompleted(bindActiveBook(session, request.bookId));
-      return {
-        session: addEvent(completed, "task.completed", "completed", localize(language, {
-          zh: `已切换当前作品到 ${request.bookId}。`,
-          en: `Bound active book to ${request.bookId}.`,
-        })),
-        responseText: localize(language, {
-          zh: `当前作品：${request.bookId}`,
-          en: `Active book: ${request.bookId}`,
-        }),
       };
     }
     case "revise_chapter":
