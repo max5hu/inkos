@@ -262,6 +262,13 @@ export class WriterAgent extends BaseAgent {
 
     const creative = parseCreativeOutput(chapterNumber, creativeResponse.content, resolvedLengthSpec.countingMode);
 
+    // Phase 4: soft-check that PRE_WRITE_CHECK aligns with the chapter memo.
+    // Memo was already parse-validated in the planner, so this only warns —
+    // the LLM self-check may have skipped or abbreviated a row.
+    if (input.chapterMemo) {
+      this.verifyPreWriteCheckAlignsWithMemo(creative.preWriteCheck, chapterNumber, resolvedLanguage);
+    }
+
     // ── Phase 2: State settlement (temperature 0.3) ──
     this.logInfo(resolvedLanguage, {
       zh: `阶段 2：状态结算（第${chapterNumber}章，${creative.wordCount}字）`,
@@ -923,6 +930,40 @@ ${selectedContext || "- none"}
 
 ### 当前覆盖
 ${overrides}\n`;
+  }
+
+  /**
+   * Soft-check that the LLM's PRE_WRITE_CHECK output references the three
+   * non-negotiable memo sections: 当前任务, 不要做, 章尾必须发生的改变.
+   *
+   * This is NOT a hard gate — the memo was already parse-validated in the
+   * planner, and the writer prompt already tells the LLM to align to memo.
+   * We only warn when the LLM skipped a section, so the chapter still ships.
+   */
+  private verifyPreWriteCheckAlignsWithMemo(
+    preWriteCheck: string,
+    chapterNumber: number,
+    language: "zh" | "en",
+  ): void {
+    if (!preWriteCheck || preWriteCheck.trim().length === 0) {
+      this.logWarn(language, {
+        zh: `第${chapterNumber}章 PRE_WRITE_CHECK 为空，无法对齐 chapter_memo`,
+        en: `Chapter ${chapterNumber} PRE_WRITE_CHECK is empty; cannot verify memo alignment`,
+      });
+      return;
+    }
+
+    const missing: string[] = [];
+    if (!preWriteCheck.includes("当前任务")) missing.push("当前任务");
+    if (!preWriteCheck.includes("不要做")) missing.push("不要做");
+    if (!preWriteCheck.includes("章尾")) missing.push("章尾必须发生的改变");
+
+    if (missing.length > 0) {
+      this.logWarn(language, {
+        zh: `第${chapterNumber}章 PRE_WRITE_CHECK 缺少 memo 章节检查：${missing.join("、")}`,
+        en: `Chapter ${chapterNumber} PRE_WRITE_CHECK missing memo sections: ${missing.join(", ")}`,
+      });
+    }
   }
 
   private buildLengthRequirementBlock(lengthSpec: LengthSpec, language: "zh" | "en"): string {
