@@ -37,8 +37,8 @@ describe("studio command", () => {
       throw new Error(`missing: ${path}`);
     });
 
-    const { studioCommand } = await import("../commands/studio.js");
-    await studioCommand.parseAsync(["node", "studio", "--port", "9001"]);
+    const { createStudioCommand } = await import("../commands/studio.js");
+    await createStudioCommand().parseAsync(["node", "studio", "--port", "9001"]);
 
     expect(spawnMock).toHaveBeenCalledWith(
       "npx",
@@ -68,8 +68,8 @@ describe("studio command", () => {
       throw new Error(`missing: ${path}`);
     });
 
-    const { studioCommand } = await import("../commands/studio.js");
-    await studioCommand.parseAsync(["node", "studio", "--port", "4567"]);
+    const { createStudioCommand } = await import("../commands/studio.js");
+    await createStudioCommand().parseAsync(["node", "studio", "--port", "4567"]);
 
     expect(spawnMock).toHaveBeenCalledWith(
       "node",

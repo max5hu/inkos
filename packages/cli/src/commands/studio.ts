@@ -16,6 +16,10 @@ export interface BrowserLaunchSpec {
   readonly args: string[];
 }
 
+export interface StudioCommandHooks {
+  readonly launchStudio?: (projectRoot: string, port: string) => Promise<void> | void;
+}
+
 async function firstAccessiblePath(paths: readonly string[]): Promise<string | undefined> {
   for (const path of paths) {
     try {
@@ -98,51 +102,63 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
   return null;
 }
 
-export const studioCommand = new Command("studio")
+export async function launchStudioWorkbench(root: string, port: string): Promise<void> {
+  const url = `http://localhost:${port}`;
+  const launch = await resolveStudioLaunch(root);
+
+  if (!launch) {
+    logError(
+      "InkOS Studio not found. If you cloned the repo, run:\n" +
+      "  cd packages/studio && pnpm install && pnpm build\n" +
+      "Then run 'inkos studio' from the project root.",
+    );
+    process.exit(1);
+  }
+
+  log(`Starting InkOS Studio on ${url}`);
+
+  const child = spawn(launch.command, launch.args, {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, INKOS_STUDIO_PORT: port },
+  });
+
+  child.on("error", (e) => {
+    logError(`Failed to start studio: ${e.message}`);
+    process.exit(1);
+  });
+
+  const browserLaunch = resolveBrowserLaunch(process.platform, url);
+  const browser = spawn(browserLaunch.command, browserLaunch.args, {
+    cwd: root,
+    stdio: "ignore",
+    detached: true,
+  });
+  browser.on("error", () => {
+    // Best effort only — server startup should not fail just because browser open failed.
+  });
+  if (typeof browser.unref === "function") {
+    browser.unref();
+  }
+
+  child.on("exit", (code) => {
+    process.exit(code ?? 0);
+  });
+}
+
+export function createStudioCommand(hooks: StudioCommandHooks = {}): Command {
+  return new Command("studio")
   .description("Start InkOS Studio web workbench")
   .option("-p, --port <port>", "Server port", "4567")
   .action(async (opts) => {
     const root = findProjectRoot();
     const port = opts.port;
-    const url = `http://localhost:${port}`;
-    const launch = await resolveStudioLaunch(root);
-
-    if (!launch) {
-      logError(
-        "InkOS Studio not found. If you cloned the repo, run:\n" +
-        "  cd packages/studio && pnpm install && pnpm build\n" +
-        "Then run 'inkos studio' from the project root.",
-      );
-      process.exit(1);
+    if (hooks.launchStudio) {
+      await hooks.launchStudio(root, port);
+      return;
     }
-
-    log(`Starting InkOS Studio on ${url}`);
-
-    const child = spawn(launch.command, launch.args, {
-      cwd: root,
-      stdio: "inherit",
-      env: { ...process.env, INKOS_STUDIO_PORT: port },
-    });
-
-    child.on("error", (e) => {
-      logError(`Failed to start studio: ${e.message}`);
-      process.exit(1);
-    });
-
-    const browserLaunch = resolveBrowserLaunch(process.platform, url);
-    const browser = spawn(browserLaunch.command, browserLaunch.args, {
-      cwd: root,
-      stdio: "ignore",
-      detached: true,
-    });
-    browser.on("error", () => {
-      // Best effort only — server startup should not fail just because browser open failed.
-    });
-    if (typeof browser.unref === "function") {
-      browser.unref();
-    }
-
-    child.on("exit", (code) => {
-      process.exit(code ?? 0);
-    });
+    await launchStudioWorkbench(root, port);
   });
+}
+
+export const studioCommand = createStudioCommand();

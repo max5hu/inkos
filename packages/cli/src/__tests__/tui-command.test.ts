@@ -9,21 +9,24 @@ describe("tui command", () => {
     vi.restoreAllMocks();
   });
 
-  it("launches the TUI when no subcommand is provided", async () => {
-    const launchTui = vi.fn(async () => {});
-    const program = createProgram({ launchTui });
+  it("launches Studio when no subcommand is provided", async () => {
+    const launchStudio = vi.fn(async () => {});
+    const program = createProgram({ launchStudio });
 
     await program.parseAsync([], { from: "user" });
 
-    expect(launchTui).toHaveBeenCalledTimes(1);
+    expect(launchStudio).toHaveBeenCalledTimes(1);
+    expect(launchStudio).toHaveBeenCalledWith(process.cwd(), "4567");
   });
 
   it("launches the TUI when the explicit tui command is used", async () => {
     const launchTui = vi.fn(async () => {});
-    const program = createProgram({ launchTui });
+    const launchStudio = vi.fn(async () => {});
+    const program = createProgram({ launchTui, launchStudio });
 
     await program.parseAsync(["tui"], { from: "user" });
 
     expect(launchTui).toHaveBeenCalledTimes(1);
+    expect(launchStudio).not.toHaveBeenCalled();
   });
 });
