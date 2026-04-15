@@ -1248,6 +1248,36 @@ export class PipelineRunner {
     const postReviseCount = reviewResult.postReviseCount;
     const normalizeApplied = reviewResult.normalizeApplied;
 
+    // 3b. File-layer polish pass — runs AFTER structural audit accepts the
+    // chapter. Polisher only touches sentence craft / paragraph shape /
+    // wording / sensory detail / dialogue naturalness. Plot / character /
+    // mainline stay frozen. Skipped when audit did not produce a passing
+    // chapter (leave the failing draft visible for the next cycle) or when
+    // length is dangerously off-range (normalize should handle it, not polish).
+    if (auditResult.passed) {
+      try {
+        const { PolisherAgent } = await import("../agents/polisher.js");
+        const polisher = new PolisherAgent(this.agentCtxFor("polisher", bookId));
+        this.logStage(stageLanguage, { zh: "文字层润色", en: "polishing prose" });
+        const polishOutput = await polisher.polishChapter({
+          chapterContent: finalContent,
+          chapterNumber,
+          chapterMemo: reducedControlInput?.chapterMemo,
+          language: pipelineLang === "en" ? "en" : "zh",
+        });
+        totalUsage = PipelineRunner.addUsage(totalUsage, polishOutput.tokenUsage);
+        if (polishOutput.changed && polishOutput.polishedContent.trim().length > 0) {
+          finalContent = polishOutput.polishedContent;
+          finalWordCount = countChapterLength(finalContent, lengthSpec.countingMode);
+        }
+      } catch (error) {
+        this.logWarn(pipelineLang, {
+          zh: `润色阶段失败：${error instanceof Error ? error.message : String(error)}`,
+          en: `polish stage failed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+
     // 4. Save the final chapter and truth files from a single persistence source
     this.logStage(stageLanguage, { zh: "落盘最终章节", en: "persisting final chapter" });
     this.logStage(stageLanguage, { zh: "生成最终真相文件", en: "rebuilding final truth files" });
