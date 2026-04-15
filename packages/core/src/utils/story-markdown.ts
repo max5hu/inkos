@@ -44,12 +44,12 @@ export function renderHookSnapshot(
 
   const headers = language === "en"
     ? [
-      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | start_chapter | type | status | last_advanced | expected_payoff | payoff_timing | depends_on | pays_off_in_arc | core_hook | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     : [
-      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 上游依赖 | 回收卷 | 核心 | 备注 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ];
 
   return [
@@ -62,9 +62,22 @@ export function renderHookSnapshot(
       hook.lastAdvancedChapter,
       hook.expectedPayoff,
       localizeHookPayoffTiming(resolveHookPayoffTiming(hook), language),
+      renderDependsOnCell(hook.dependsOn ?? [], language),
+      hook.paysOffInArc ?? "",
+      renderCoreHookCell(hook.coreHook === true, language),
       hook.notes,
     ].map((cell) => escapeTableCell(String(cell))).join(" | ")).map((row) => `| ${row} |`),
   ].join("\n");
+}
+
+function renderDependsOnCell(ids: ReadonlyArray<string>, language: "zh" | "en"): string {
+  if (ids.length === 0) return language === "en" ? "none" : "无";
+  return `[${ids.join(", ")}]`;
+}
+
+function renderCoreHookCell(isCore: boolean, language: "zh" | "en"): string {
+  if (language === "en") return isCore ? "true" : "false";
+  return isCore ? "是" : "否";
 }
 
 export function parseChapterSummariesMarkdown(markdown: string): StoredSummary[] {
@@ -229,16 +242,22 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
   // Row shapes by length:
   //   7 (legacy pre-timing): id, ch, type, status, last_adv, expected, notes
   //   8 (Phase 5/6):          id, ch, type, status, last_adv, expected, timing, notes
-  //  12 (Phase 7 extended):   id, ch, type, status, last_adv, expected, timing,
-  //                           depends_on, pays_off_in_arc, core_hook, half_life, notes
-  const phase7 = row.length >= 12;
+  //  11 (Phase 7 ledger):     ... + depends_on, pays_off_in_arc, core_hook, notes
+  //  12 (Phase 7 architect):  ... + depends_on, pays_off_in_arc, core_hook, half_life, notes
+  //  additional trailing columns (e.g. stale/blocked diagnostic columns) are
+  //  allowed — the parser skips past them to the notes column.
+  const phase7Full = row.length >= 12;
+  const phase7Compact = row.length === 11;
+  const phase7 = phase7Full || phase7Compact;
   const legacyShape = row.length < 8;
   const payoffTiming = legacyShape ? undefined : normalizeHookPayoffTiming(row[6]);
-  const notes = phase7
+  const notes = phase7Full
     ? (row[11] ?? "")
-    : legacyShape
-      ? (row[6] ?? "")
-      : (row[7] ?? "");
+    : phase7Compact
+      ? (row[10] ?? "")
+      : legacyShape
+        ? (row[6] ?? "")
+        : (row[7] ?? "");
 
   const base = {
     hookId: normalizeHookId(row[0]),
@@ -258,7 +277,7 @@ function parsePendingHookRow(row: ReadonlyArray<string | undefined>): StoredHook
     dependsOn: parseDependsOn(row[7] ?? ""),
     paysOffInArc: (row[8] ?? "").trim(),
     coreHook: parseBooleanCell(row[9]),
-    halfLifeChapters: parseOptionalInt(row[10]),
+    halfLifeChapters: phase7Full ? parseOptionalInt(row[10]) : undefined,
   };
 }
 

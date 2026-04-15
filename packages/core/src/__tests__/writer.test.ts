@@ -231,7 +231,7 @@ describe("WriterAgent", () => {
       expect(settlePrompt).toContain("| 99 | Locked Gate |");
       expect(settlePrompt).toContain("## Hook Debt Briefs");
       expect(settlePrompt).toContain("mentor-oath | cadence: slow-burn");
-      expect(settlePrompt).toContain("| stale-ledger | 14 | mystery | open | 70 | 120 | 中程 | Old ledger debt is dormant but unresolved |");
+      expect(settlePrompt).toContain("| stale-ledger | 14 | mystery | open | 70 | 120 | 中程 | 无 |  | 否 | Old ledger debt is dormant but unresolved |");
       expect(settlePrompt).not.toContain("| 1 | Guild Trail |");
       expect(settlePrompt).not.toContain("old-seal");
       expect(settlePrompt).not.toContain("Guildmaster Ren");

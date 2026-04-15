@@ -13,14 +13,16 @@ export function renderHooksProjection(
   language: "zh" | "en" = "zh",
 ): string {
   const title = language === "en" ? "# Pending Hooks" : "# 伏笔池";
+  // Phase 7: depends_on / pays_off_in_arc / core_hook are visible columns,
+  // so writer and reviewer both see the causal chain and planned payoff arc.
   const headers = language === "en"
     ? [
-      "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | payoff_timing | notes |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | start_chapter | type | status | last_advanced_chapter | expected_payoff | payoff_timing | depends_on | pays_off_in_arc | core_hook | notes |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     : [
-      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 备注 |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| hook_id | 起始章节 | 类型 | 状态 | 最近推进 | 预期回收 | 回收节奏 | 上游依赖 | 回收卷 | 核心 | 备注 |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ];
 
   const rows = [...state.hooks]
@@ -38,11 +40,24 @@ export function renderHooksProjection(
         hook.lastAdvancedChapter,
         hook.expectedPayoff,
         localizeHookPayoffTiming(resolveHookPayoffTiming(hook), language),
+        renderDependsOnCell(hook.dependsOn ?? [], language),
+        hook.paysOffInArc ?? "",
+        renderCoreHookCell(hook.coreHook === true, language),
         hook.notes,
       ].map(escapeTableCell).join(" | ")
     } |`);
 
   return [title, "", ...headers, ...rows, ""].join("\n");
+}
+
+function renderDependsOnCell(ids: ReadonlyArray<string>, language: "zh" | "en"): string {
+  if (ids.length === 0) return language === "en" ? "none" : "无";
+  return `[${ids.join(", ")}]`;
+}
+
+function renderCoreHookCell(isCore: boolean, language: "zh" | "en"): string {
+  if (language === "en") return isCore ? "true" : "false";
+  return isCore ? "是" : "否";
 }
 
 export function renderChapterSummariesProjection(
