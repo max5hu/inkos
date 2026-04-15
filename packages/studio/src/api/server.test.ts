@@ -122,6 +122,7 @@ vi.mock("@actalk/inkos-core", () => {
     loadProjectSession: loadProjectSessionMock,
     resolveSessionActiveBook: resolveSessionActiveBookMock,
     runAgentSession: runAgentSessionMock,
+    buildAgentSystemPrompt: vi.fn(() => "You are helpful."),
     findOrCreateBookSession: findOrCreateBookSessionMock,
     loadBookSession: loadBookSessionMock,
     persistBookSession: persistBookSessionMock,
@@ -989,7 +990,7 @@ describe("createStudioServer daemon lifecycle", () => {
       responseText: "",
       messages: [{ role: "user", content: "nihao" }],
     });
-    chatCompletionMock.mockRejectedValueOnce(new Error("quota exhausted"));
+    chatCompletionMock.mockRejectedValue(new Error("quota exhausted"));
 
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
@@ -1007,6 +1008,32 @@ describe("createStudioServer daemon lifecycle", () => {
         message: "quota exhausted",
       },
       response: "quota exhausted",
+    });
+  });
+
+  it("falls back to plain chat when the tool-agent returns empty text", async () => {
+    runAgentSessionMock.mockResolvedValueOnce({
+      responseText: "",
+      messages: [{ role: "user", content: "nihao" }],
+    });
+    chatCompletionMock.mockResolvedValueOnce({
+      content: "你好！",
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction: "nihao", activeBookId: "demo-book" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      response: "你好！",
+      session: { sessionId: "agent-session-1" },
     });
   });
 

@@ -144,11 +144,13 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   const baseUrl = config.baseUrl || preset?.baseUrl || "";
   const extraHeaders = config.headers ?? parseEnvHeaders();
 
+  const provider = config.provider === "anthropic" ? "anthropic" : "openai";
+
   const piModel: PiModel<PiApi> = {
     id: config.model,
     name: config.model,
     api: piApi,
-    provider: serviceName,
+    provider,
     baseUrl,
     reasoning: (config.thinkingBudget ?? 0) > 0,
     input: ["text"] as ("text" | "image")[],
@@ -158,7 +160,6 @@ export function createLLMClient(config: LLMConfig): LLMClient {
     ...(extraHeaders ? { headers: extraHeaders } : {}),
   };
 
-  const provider = config.provider === "anthropic" ? "anthropic" : "openai";
   return {
     provider,
     apiFormat,
