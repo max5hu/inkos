@@ -24,7 +24,7 @@ import { analyticsCommand } from "./commands/analytics.js";
 import { evalCommand } from "./commands/eval.js";
 import { importCommand } from "./commands/import.js";
 import { fanficCommand } from "./commands/fanfic.js";
-import { createStudioCommand, launchStudioWorkbench } from "./commands/studio.js";
+import { createStudioCommand, launchStudioEntry } from "./commands/studio.js";
 import { consolidateCommand } from "./commands/consolidate.js";
 import { createInteractCommand, type InteractCommandHooks } from "./commands/interact.js";
 import { createTuiCommand } from "./commands/tui.js";
@@ -48,11 +48,7 @@ export function createProgram(hooks: ProgramHooks = {}): Command {
     .description("InkOS — Multi-agent novel production system")
     .version(version)
     .action(async () => {
-      if (hooks.launchStudio) {
-        await hooks.launchStudio(process.cwd(), "4567");
-        return;
-      }
-      await launchStudioWorkbench(process.cwd(), "4567");
+      await launchStudioEntry(process.cwd(), "4567", { launchStudio: hooks.launchStudio });
     });
 
   program.addCommand(initCommand);

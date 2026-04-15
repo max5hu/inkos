@@ -10,6 +10,9 @@ const logErrorMock = vi.fn();
 
 vi.mock("node:fs/promises", () => ({
   access: accessMock,
+  mkdir: vi.fn(),
+  readFile: vi.fn(async () => ""),
+  writeFile: vi.fn(),
 }));
 
 vi.mock("node:child_process", () => ({

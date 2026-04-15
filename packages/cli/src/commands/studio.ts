@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { ensureProjectDirectoryInitialized } from "../project-bootstrap.js";
 
 export interface StudioLaunchSpec {
   readonly studioEntry: string;
@@ -18,6 +19,11 @@ export interface BrowserLaunchSpec {
 
 export interface StudioCommandHooks {
   readonly launchStudio?: (projectRoot: string, port: string) => Promise<void> | void;
+}
+
+async function prepareStudioRoot(root: string): Promise<{ readonly root: string; readonly initialized: boolean }> {
+  const initialized = await ensureProjectDirectoryInitialized(root, { language: "zh" });
+  return { root, initialized };
 }
 
 async function firstAccessiblePath(paths: readonly string[]): Promise<string | undefined> {
@@ -103,7 +109,10 @@ export async function resolveStudioLaunch(root: string): Promise<StudioLaunchSpe
 }
 
 export async function launchStudioWorkbench(root: string, port: string): Promise<void> {
-  const url = `http://localhost:${port}`;
+  const prepared = await prepareStudioRoot(root);
+  const url = prepared.initialized
+    ? `http://localhost:${port}#/services`
+    : `http://localhost:${port}`;
   const launch = await resolveStudioLaunch(root);
 
   if (!launch) {
@@ -146,6 +155,24 @@ export async function launchStudioWorkbench(root: string, port: string): Promise
   });
 }
 
+export async function launchStudioEntry(
+  root: string,
+  port: string,
+  hooks: StudioCommandHooks = {},
+): Promise<void> {
+  const prepared = await prepareStudioRoot(root);
+  if (prepared.initialized) {
+    log(`No inkos.json found in ${root}. Initialized a minimal InkOS project for Studio.`);
+  }
+
+  if (hooks.launchStudio) {
+    await hooks.launchStudio(prepared.root, port);
+    return;
+  }
+
+  await launchStudioWorkbench(prepared.root, port);
+}
+
 export function createStudioCommand(hooks: StudioCommandHooks = {}): Command {
   return new Command("studio")
   .description("Start InkOS Studio web workbench")
@@ -153,11 +180,7 @@ export function createStudioCommand(hooks: StudioCommandHooks = {}): Command {
   .action(async (opts) => {
     const root = findProjectRoot();
     const port = opts.port;
-    if (hooks.launchStudio) {
-      await hooks.launchStudio(root, port);
-      return;
-    }
-    await launchStudioWorkbench(root, port);
+    await launchStudioEntry(root, port, hooks);
   });
 }
 
