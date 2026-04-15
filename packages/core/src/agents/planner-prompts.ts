@@ -119,10 +119,11 @@ export interface PlannerUserMessageInput {
   readonly relevantThreads: string;
   readonly isGoldenOpening: boolean;
   readonly bookRulesRelevant: string;
+  readonly language?: "zh" | "en";
 }
 
 export function buildPlannerUserMessage(input: PlannerUserMessageInput): string {
-  return PLANNER_MEMO_USER_TEMPLATE
+  const filled = PLANNER_MEMO_USER_TEMPLATE
     .replaceAll("{{chapterNumber}}", String(input.chapterNumber))
     .replaceAll("{{previous_chapter_ending_excerpt}}", input.previousChapterEndingExcerpt)
     .replaceAll("{{recent_summaries}}", input.recentSummaries)
@@ -133,4 +134,34 @@ export function buildPlannerUserMessage(input: PlannerUserMessageInput): string 
     .replaceAll("{{relevant_threads}}", input.relevantThreads)
     .replaceAll("{{isGoldenOpening}}", input.isGoldenOpening ? "是" : "否")
     .replaceAll("{{book_rules_relevant}}", input.bookRulesRelevant);
+
+  const golden = buildGoldenOpeningGuidance(input.chapterNumber, input.language ?? "zh");
+  return golden ? `${filled}\n\n${golden}` : filled;
+}
+
+// ---------------------------------------------------------------------------
+// 黄金三章 prose guidance — Phase 6.5
+// Single conditional append (chapterNumber <= 3). No new schema, no new
+// runtime branch. Cohesive paragraphs, NOT a numbered checklist.
+// ---------------------------------------------------------------------------
+
+export function buildGoldenOpeningGuidance(
+  chapterNumber: number,
+  language: "zh" | "en" = "zh",
+): string {
+  if (chapterNumber > 3) return "";
+
+  if (language === "en") {
+    return `## Golden Opening Guidance — Chapter ${chapterNumber}
+
+This is chapter ${chapterNumber} of the opening three — the chapters that decide whether a reader stays. The Golden Three Chapters rule from new.txt assigns each chapter a load-bearing slot: chapter 1 must throw the reader straight into the core conflict (the protagonist enters already facing the main contradiction — chase, dead-end, dispossession, transmigration-as-crisis), not a paragraph of background, family tree, weather, or dynastic preamble. Chapter 2 must put the protagonist's edge — the system, the power, the rebirth-memory, the information advantage — on the stage through one concrete event (not "he awakened a power" narrated, but "he used it for X and Y happened"). Chapter 3 must lock in a concrete short-term goal achievable within the next 3-10 chapters (build the first stake of capital, take down the small antagonist, save someone), giving the story forward pull.
+
+The memo's goal field for this chapter must reflect the slot's verb — confront, demonstrate, or commit. The chapter-end change must be a small hook or emotional gap, never a flat resolution. Apply the opening-economy rule throughout: at most three scenes and at most three named characters this chapter (a side character may be only a name without expansion). Information layering is mandatory — basic facts (appearance, status, situation) ride on the protagonist's actions, world rules ride on plot triggers; do not stage a paragraph of exposition.`;
+  }
+
+  return `## 黄金三章规划指引 — 第 ${chapterNumber} 章
+
+这是开篇三章中的第 ${chapterNumber} 章——决定读者是否留下来的关键章节。new.txt 的黄金三章法则给每一章分了硬槽位：第 1 章必须把主角直接抛进核心冲突里（主角出场即面对主线矛盾——追杀、死局、被夺权、穿越即危机），不要拿背景、家族、天气、朝代铺垫开场。第 2 章必须让金手指落地一次——系统/能力/重生记忆/信息差，必须通过**一次具体事件**展现出来（不是"他觉醒了 XX"的旁白，而是"他用了 XX，发生了 YY"）。第 3 章必须给主角钉下一个 3-10 章内可达成的具体短期目标（攒第一桶金、干翻某小反派、救某人），给故事一条往前拉的引力线。
+
+本章 memo 的 goal 字段必须体现对应槽位的动词——抛出、展现、或锁定。章尾必须发生的改变要落在小钩子或情绪缺口上，不要写成平稳收束。开篇精简原则贯穿本章：场景 ≤ 3 个、人物 ≤ 3 个（配角可以只报名字，不展开）。信息分层强制要求：基础信息（外貌、身份、处境）通过主角行动自然带出，世界规则（设定、势力、底层逻辑）结合剧情节点揭示，禁止整段 exposition。`;
 }

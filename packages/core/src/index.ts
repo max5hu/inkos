@@ -71,6 +71,7 @@ export {
   PLANNER_MEMO_SYSTEM_PROMPT,
   PLANNER_MEMO_USER_TEMPLATE,
   buildPlannerUserMessage,
+  buildGoldenOpeningGuidance,
   type PlannerUserMessageInput,
 } from "./agents/planner-prompts.js";
 export {
