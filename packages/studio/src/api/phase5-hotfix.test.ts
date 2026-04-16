@@ -52,10 +52,23 @@ vi.mock("@actalk/inkos-core", () => {
     get isRunning(): boolean { return false; }
   }
 
+  // Real isNewLayoutBook — needs filesystem access for per-book detection
+  async function isNewLayoutBook(bookDir: string): Promise<boolean> {
+    const { access: accessFs } = await import("node:fs/promises");
+    const { join: joinPath } = await import("node:path");
+    try {
+      await accessFs(joinPath(bookDir, "story", "outline", "story_frame.md"));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
     Scheduler: MockScheduler,
+    isNewLayoutBook,
     createLLMClient: createLLMClientMock,
     createLogger: vi.fn(() => logger),
     computeAnalytics: vi.fn(() => ({})),
@@ -151,7 +164,9 @@ describe("Phase 5 hotfix 1 — Studio truth file endpoints", () => {
     expect(body.content).toContain("核心标签");
   });
 
-  it("tags legacy shim files (story_bible.md, book_rules.md) with legacy: true on GET", async () => {
+  it("tags legacy shim files (story_bible.md, book_rules.md) with legacy: true on GET for new-layout book", async () => {
+    // New-layout book: outline/story_frame.md must exist for shims to be tagged
+    await writeFile(join(storyDir, "outline/story_frame.md"), "# Frame", "utf-8");
     await writeFile(join(storyDir, "story_bible.md"), "# Legacy bible shim", "utf-8");
     await writeFile(join(storyDir, "book_rules.md"), "# Legacy rules shim", "utf-8");
     const { createStudioServer } = await import("./server.js");
@@ -201,7 +216,9 @@ describe("Phase 5 hotfix 1 — Studio truth file endpoints", () => {
     expect(response3.status).toBe(400);
   });
 
-  it("refuses to PUT legacy shim files (story_bible.md / book_rules.md)", async () => {
+  it("refuses to PUT legacy shim files (story_bible.md / book_rules.md) for new-layout book", async () => {
+    // New-layout book: outline/story_frame.md must exist for PUT rejection
+    await writeFile(join(storyDir, "outline/story_frame.md"), "# Frame", "utf-8");
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
 
