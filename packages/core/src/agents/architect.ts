@@ -527,24 +527,41 @@ Rules:
     const legacyStoryBible = parsedSections.get("story_bible") ?? "";
     const legacyVolumeOutline = parsedSections.get("volume_outline") ?? "";
     const bookRules = parsedSections.get("book_rules");
-    const currentState = parsedSections.get("current_state");
+    // Phase 5 consolidation: current_state is no longer a required section.
+    // Legacy books (v12 / Phase 5 initial) and import/fanfic regenerations
+    // may still produce it — accept the value when present, fall through to
+    // empty seed when absent (consolidator will populate at runtime).
+    const currentStateLegacy = parsedSections.get("current_state") ?? "";
     const pendingHooksRaw = parsedSections.get("pending_hooks");
 
-    // Book-rules, current-state and pending-hooks are still required.
-    if (!bookRules) throw new Error("Architect output missing required section: book_rules");
-    if (!currentState) throw new Error("Architect output missing required section: current_state");
-    if (!pendingHooksRaw) throw new Error("Architect output missing required section: pending_hooks");
+    // 5-section required contract: story_frame (or legacy story_bible),
+    // volume_map (or legacy volume_outline), roles, book_rules, pending_hooks.
+    //
+    // Backward compat: v12 outputs used story_bible/volume_outline and
+    // embedded character data inside story_bible — they had no roles block.
+    // When the model uses ONLY legacy section names, we accept an empty roles
+    // list (consolidator/readers fall back to the character_matrix shim).
+    // When the new story_frame / volume_map names are used we require roles.
+    const usingLegacyOutlineNames = !storyFrame && !volumeMap
+      && (legacyStoryBible.length > 0 || legacyVolumeOutline.length > 0);
 
-    // At least one of the new prose sections or their legacy equivalents
-    // must be present — otherwise the foundation is unusable.
+    const missing: string[] = [];
     const effectiveStoryFrame = storyFrame || legacyStoryBible;
     const effectiveVolumeMap = volumeMap || legacyVolumeOutline;
-    if (!effectiveStoryFrame) throw new Error("Architect output missing required section: story_frame");
-    if (!effectiveVolumeMap) throw new Error("Architect output missing required section: volume_map");
+    if (!effectiveStoryFrame) missing.push("story_frame");
+    if (!effectiveVolumeMap) missing.push("volume_map");
+    if (!rolesRaw.trim() && !usingLegacyOutlineNames) missing.push("roles");
+    if (!bookRules) missing.push("book_rules");
+    if (!pendingHooksRaw) missing.push("pending_hooks");
+    if (missing.length > 0) {
+      throw new Error(
+        `Architect output missing required section${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`,
+      );
+    }
 
     const roles = this.parseRoles(rolesRaw);
     const pendingHooks = this.normalizePendingHooksSection(
-      this.stripTrailingAssistantCoda(pendingHooksRaw),
+      this.stripTrailingAssistantCoda(pendingHooksRaw!),
       effectiveVolumeMap,
     );
 
@@ -556,8 +573,11 @@ Rules:
     return {
       storyBible,
       volumeOutline,
-      bookRules,
-      currentState,
+      bookRules: bookRules!,
+      // currentState: empty string when architect no longer emits the section;
+      // writeFoundationFiles seeds current_state.md with a placeholder so
+      // consolidator / state-bootstrap readers find a valid file on first boot.
+      currentState: currentStateLegacy,
       pendingHooks,
       storyFrame: effectiveStoryFrame,
       volumeMap: effectiveVolumeMap,
@@ -712,7 +732,17 @@ Rules:
     ));
 
     // Runtime state files (untouched by Phase 5)
-    writes.push(writeFile(join(storyDir, "current_state.md"), output.currentState, "utf-8"));
+    // Phase 5 consolidation: architect no longer emits a current_state section,
+    // so output.currentState is usually empty. We still write the file — with
+    // a minimal seed — so isCompleteBookDirectory() sees it and the first
+    // consolidator pass has somewhere to append. Legacy books / imports that
+    // still produced the section keep their content as-is.
+    const currentStateSeed = output.currentState?.trim()
+      ? output.currentState
+      : (language === "en"
+          ? "# Current State\n\n> Seeded at book creation. Runtime state is appended by the consolidator after each chapter. Initial per-character state lives in roles/*.Current_State; load-bearing initial world facts live in pending_hooks rows with start_chapter=0.\n"
+          : "# 当前状态\n\n> 建书时占位。运行时每章之后由 consolidator 追加最新状态。每个角色的初始状态详见 roles/*.当前现状；承重的初始世界设定见 pending_hooks 里 startChapter=0 的行。\n");
+    writes.push(writeFile(join(storyDir, "current_state.md"), currentStateSeed, "utf-8"));
     writes.push(writeFile(join(storyDir, "pending_hooks.md"), output.pendingHooks, "utf-8"));
     writes.push(writeFile(
       join(storyDir, "emotional_arcs.md"),
