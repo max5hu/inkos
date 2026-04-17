@@ -66,6 +66,20 @@ pi-agent 默认的 `convertToLlm` 只保留 user/assistant/toolResult 三种 rol
 
 写作过程中 agent 可能通过 `write_truth_file` 工具更新真相文件。每次 LLM 调用前重读，保证 context 里的真相文件永远是最新版本。本地文件读取延迟可忽略。
 
+**为什么不会重复累积：**
+
+`transformContext` 返回的新数组只用于当次 LLM 调用，不会写回 Agent 内部的 messages 历史。pi-agent 的 `agent-loop.js` 里的执行顺序是：
+
+```
+原始 messages（Agent 内部持久的）
+  → transformContext 返回新数组（含注入的真相文件）
+  → convertToLlm 转换
+  → 发给 LLM
+  → 新数组用完丢弃，原始 messages 不受影响
+```
+
+所以每次 LLM 调用时 context 里只有一份真相文件，不会随对话轮次累积成多份。
+
 ### 2. Context 占用比例 UI
 
 **数据获取：**
