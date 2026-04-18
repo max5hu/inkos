@@ -202,24 +202,21 @@ ${eraBlock}
 
 === SECTION: volume_map ===
 
-这是分卷散文地图，**5 段主体 + 1 段节奏原则尾段**。**关键要求：写到章级 prose**（"第 17 章让他回家"、"第 32-35 章把师父的秘密揭开"级别的布局）。这是 Phase 3 planner LLM 能从稀疏 memo 里读出动作的源头。不写到章级就废了。
+这是分卷散文地图，**5 段主体 + 1 段节奏原则尾段**。**关键要求：只写到卷级 prose**——写清楚每卷的主题、情绪曲线、卷间钩子、角色阶段目标、卷尾不可逆事件。**禁止指定具体章号任务**（不要写"第 17 章让他回家"这种章级布局）。章级规划是 Phase 3 planner 的职责，架构师只搭骨架、不编章目。
 
 ### 段 1：各卷主题与情绪曲线
 有几卷？每卷的主题一句话，每卷的情绪曲线一段（哪里压、哪里爽、哪里冷、哪里暖）。不要机械的"第一卷打小怪第二卷打大怪"，写情绪的流动。
 
-### 段 2：关键节点章（散文级到章号）
-列出本书的关键章——高潮章（第 X 章、第 Y 章）、重大转折章、呼吸章/温情章。每个节点一句话说"这一章发生什么、为什么放在这个位置"。例："第 17 章让他回家——母亲已经病了三卷没见，这一章的重量在回家路上那段沉默"。
+### 段 2：卷间钩子与回收承诺
+第 1 卷埋什么钩子、在哪一卷回收；第 2 卷埋什么、在哪一卷回收。散文写，不要表格。**只写卷级**（如"第 1 卷埋的身世之谜在第 3 卷回收"），不要写具体章号。
 
-### 段 3：卷间钩子与回收承诺
-第 1 卷埋什么钩子、哪一章回收；第 2 卷埋什么、哪一章回收。散文写，不要表格。必须写具体"这个钩子在第 N 章回"而不是"后期回收"。
-
-### 段 4：角色阶段性目标
+### 段 3：角色阶段性目标
 主角在第 1 卷末要到什么状态？第 2 卷末？每一卷结束时主角的身份/关系/能力/心境应该是什么。次要角色的阶段性变化也要点到（师父在第 2 卷会死、对手在第 3 卷会黑化等）。写阶段性，不写完整弧线（完整弧线在 roles）。
 
-### 段 5：卷尾必须发生的改变
-每一卷最后一章必须发生什么不可逆的事——权力结构改变、关系破裂、秘密暴露、主角身份重定位。写散文，一卷一段。
+### 段 4：卷尾必须发生的改变
+每一卷最后一章必须发生什么不可逆的事——权力结构改变、关系破裂、秘密暴露、主角身份重定位。写散文，一卷一段。**只写"必须发生什么"，不指定是第几章**。
 
-### 段 6：节奏原则（具体化 + 通用）
+### 段 5：节奏原则（具体化 + 通用）
 **这是节奏原则的唯一归宿，不再有独立 rhythm_principles section。** 本段输出 6 条节奏原则。**至少 3 条必须具体化到本书**（例："前 30 章每 5 章一个小爽点"），其余可保留通用原则（例："拒绝机械降神"、"高潮前 3-5 章埋伏笔"）。具体化 + 通用混合是合法的。反面例子："节奏要张弛有度"（废话）。正面例子："前 30 章每 5 章一个小爽点，且小爽点必须落在章末 300 字内"。6 条各写 2-3 句，覆盖（顺序不强制、可替换同权重议题）：
 1. 高潮间距——本书大高潮之间最长多少章？（具体化优先）
 2. 喘息频率——高压段多长必须插一章喘息？喘息章承担什么任务？
@@ -386,24 +383,21 @@ What the last chapter roughly feels like. The final shot: where, doing what, aro
 
 === SECTION: volume_map ===
 
-Prose volume map, **5 sections + 1 closing rhythm paragraph**. **Critical requirement: write to chapter-level prose** ("chapter 17 sends him home", "chapters 32-35 reveal the master's secret"). Without chapter-level detail the sparse-memo planner has nothing to read.
+Prose volume map, **5 sections + 1 closing rhythm paragraph**. **Critical requirement: stay at volume-level prose only** — specify each volume's theme, emotional curve, cross-volume hooks, character stage goals, and volume-end irreversible changes. **Do NOT prescribe chapter-level tasks** (no "chapter 17 sends him home"). Chapter planning is the Phase 3 planner's job; the architect builds the skeleton, not the chapter list.
 
 ## 01_Volume_Themes_and_Emotional_Curves
 How many volumes? Each volume's theme in one sentence; each volume's emotional curve as a paragraph (where pressured, where rewarding, where cold, where warm). Not mechanical rotation.
 
-## 02_Key_Node_Chapters (prose-level, with chapter numbers)
-Climax chapters (ch X, ch Y), turning-point chapters, breath/tender chapters. One line per node: "ch 17 sends him home — the mother has been ill three volumes unseen; the weight of the chapter lives in the silence of the walk home".
+## 02_Cross_Volume_Hooks_and_Payoff_Promises
+Volume 1 plants hook A, paid off in volume N; volume 2 plants hook B, paid off in volume M. Prose, not tables. **Stay at volume-level** (e.g., "the origin mystery planted in volume 1 pays off in volume 3"); do not specify chapter numbers.
 
-## 03_Cross_Volume_Hooks_and_Payoff_Promises
-Volume 1 plants hook A, paid off in ch N; volume 2 plants hook B, paid off in ch M. Prose, not tables. Concrete chapter numbers, not "late game payoff".
-
-## 04_Character_Stage_Goals
+## 03_Character_Stage_Goals
 Protagonist's state at end of vol 1, vol 2, ... Supporting characters' stage changes (master dies end of vol 2, opponent breaks bad in vol 3). Stage goals only — full arc lives in roles.
 
-## 05_Volume_End_Mandatory_Changes
-Each volume's last chapter must contain an irreversible event. Prose, one paragraph per volume.
+## 04_Volume_End_Mandatory_Changes
+Each volume's last chapter must contain an irreversible event. Prose, one paragraph per volume. **Write what must happen, not which chapter**.
 
-## 06_Rhythm_Principles (concrete + universal)
+## 05_Rhythm_Principles (concrete + universal)
 **This is the single home for rhythm principles — no separate rhythm_principles section exists.** Output 6 rhythm principles. **At least 3 must be concretized for this book** (e.g., "every 5 chapters in the first 30, hit one small payoff"); the rest may stay as universal rules (e.g., "no deus ex machina", "plant the foreshadow 3-5 chapters before the climax"). A mix of concrete + universal is valid. Bad: "rhythm must balance tension and release". Good: "every 5 chapters in the first 30 carries a small payoff landing in the last 300 chars of the chapter". Cover (order flexible, substitutions of equal weight are allowed): (1) climax spacing, (2) breath frequency, (3) hook density, (4) information release pacing, (5) payoff rhythm, (6) relationship advancement — each 2-3 sentences.
 
 === SECTION: roles ===

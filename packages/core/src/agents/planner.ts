@@ -136,6 +136,7 @@ export class PlannerAgent extends BaseAgent {
       fallbackGoal: goal,
       chapterSummariesRaw: seedMaterials.chapterSummariesRaw,
       previousEndingExcerpt: seedMaterials.previousEndingExcerpt,
+      brief: seedMaterials.brief,
       // Phase hotfix 4: thread book language through so the planner uses
       // English prompts (system + user template + golden opening guidance)
       // for English books instead of always-Chinese.
@@ -180,6 +181,7 @@ export class PlannerAgent extends BaseAgent {
     readonly fallbackGoal: string;
     readonly chapterSummariesRaw: string;
     readonly previousEndingExcerpt?: string;
+    readonly brief?: string;
     readonly language?: "zh" | "en";
   }): Promise<ChapterMemo> {
     const [characterMatrix, subplotBoard, emotionalArcs, pendingHooks, bookRulesRaw] = await Promise.all([
@@ -217,6 +219,7 @@ export class PlannerAgent extends BaseAgent {
       relevantThreads: extractRelevantThreads(pendingHooks, subplotBoard),
       isGoldenOpening: input.isGoldenOpening,
       bookRulesRelevant: bookRulesRaw.trim().length > 0 ? bookRulesRaw.trim() : noBookRules,
+      brief: input.brief ?? "",
       language,
     });
 

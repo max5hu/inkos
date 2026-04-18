@@ -473,6 +473,12 @@ export class PipelineRunner {
         book.language ?? gp.language,
       );
 
+      if (this.config.externalContext && this.config.externalContext.trim().length > 0) {
+        const storyDir = join(stagingBookDir, "story");
+        await mkdir(storyDir, { recursive: true });
+        await writeFile(join(storyDir, "brief.md"), this.config.externalContext, "utf-8");
+      }
+
       this.logStage(stageLanguage, { zh: "初始化控制文档", en: "initializing control documents" });
       await this.state.ensureControlDocumentsAt(
         stagingBookDir,

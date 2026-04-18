@@ -21,6 +21,7 @@ export interface PlanningSeedMaterials {
   readonly bookRulesRaw: string;
   readonly currentState: string;
   readonly chapterSummariesRaw: string;
+  readonly brief: string;
   readonly outlineNode?: string;
   readonly recentSummaries: ReadonlyArray<StoredSummary>;
   readonly previousEndingHook?: string;
@@ -38,6 +39,14 @@ async function readFileOrDefault(path: string): Promise<string> {
     return await readFile(path, "utf-8");
   } catch {
     return "(文件尚未创建)";
+  }
+}
+
+async function readBriefFile(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf-8");
+  } catch {
+    return "";
   }
 }
 
@@ -84,6 +93,7 @@ export async function loadPlanningSeedMaterials(params: {
     chapterSummaries: join(storyDir, "chapter_summaries.md"),
     bookRules: join(storyDir, "book_rules.md"),
     currentState: join(storyDir, "current_state.md"),
+    brief: join(storyDir, "brief.md"),
   } as const;
 
   // Phase 5: prefer the new prose outline files (outline/story_frame.md +
@@ -99,6 +109,7 @@ export async function loadPlanningSeedMaterials(params: {
     bookRulesRaw,
     currentState,
     previousEndingExcerpt,
+    brief,
   ] = await Promise.all([
     readFileOrDefault(sourcePaths.authorIntent),
     readFileOrDefault(sourcePaths.currentFocus),
@@ -110,6 +121,7 @@ export async function loadPlanningSeedMaterials(params: {
     // seed rows when current_state.md is still just the architect's placeholder.
     readCurrentStateWithFallback(params.bookDir, placeholder),
     readPreviousEndingExcerpt(params.bookDir, params.chapterNumber),
+    readBriefFile(sourcePaths.brief),
   ]);
 
   const chapterSummaries = parseChapterSummariesMarkdown(chapterSummariesRaw)
@@ -125,6 +137,7 @@ export async function loadPlanningSeedMaterials(params: {
     bookRulesRaw,
     currentState,
     chapterSummariesRaw,
+    brief,
     recentSummaries: chapterSummaries.slice(0, 4).sort((left, right) => left.chapter - right.chapter),
     previousEndingHook: chapterSummaries[0]?.hookActivity || undefined,
     previousEndingExcerpt,

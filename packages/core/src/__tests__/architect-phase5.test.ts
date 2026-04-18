@@ -308,7 +308,7 @@ describe("ArchitectAgent — Phase 5 prose output", () => {
     await expect(agent.generateFoundation(baseBook())).rejects.toThrow(/story_frame/i);
   });
 
-  it("system prompt emphasises chapter-level prose for volume_map and contrast-detail for roles", async () => {
+  it("system prompt emphasises volume-level prose for volume_map and contrast-detail for roles", async () => {
     const agent = buildAgent();
     const chat = vi.spyOn(agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> }, "chat")
       .mockResolvedValue({ content: SAMPLE_RESPONSE, usage: ZERO_USAGE });
@@ -318,7 +318,8 @@ describe("ArchitectAgent — Phase 5 prose output", () => {
     const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
     const system = messages[0]?.content ?? "";
     expect(system).toContain("散文密度");
-    expect(system).toContain("写到章级 prose");
+    // Post-refactor: architect stays at volume level; chapter-level planning is planner's job.
+    expect(system).toContain("只写到卷级 prose");
     expect(system).toContain("反差细节");
     expect(system).toContain("节奏原则");
     expect(system).toContain("=== SECTION: story_frame ===");

@@ -159,6 +159,8 @@ if this is a pressure / conflict chapter, write "n/a — pressure chapter, no tr
 
 export const PLANNER_MEMO_USER_TEMPLATE_EN = `# Chapter {{chapterNumber}} memo request
 
+{{brief_block}}
+
 ## Last screen of previous chapter (excerpt)
 {{previous_chapter_ending_excerpt}}
 
@@ -202,6 +204,8 @@ export function getPlannerMemoUserTemplate(language: "zh" | "en" = "zh"): string
 
 export const PLANNER_MEMO_USER_TEMPLATE = `# 第 {{chapterNumber}} 章 memo 请求
 
+{{brief_block}}
+
 ## 上一章最后一屏（原文节选）
 {{previous_chapter_ending_excerpt}}
 
@@ -241,6 +245,7 @@ export interface PlannerUserMessageInput {
   readonly relevantThreads: string;
   readonly isGoldenOpening: boolean;
   readonly bookRulesRelevant: string;
+  readonly brief?: string;
   readonly language?: "zh" | "en";
 }
 
@@ -250,8 +255,11 @@ export function buildPlannerUserMessage(input: PlannerUserMessageInput): string 
   const yesText = language === "en" ? "yes" : "是";
   const noText = language === "en" ? "no" : "否";
 
+  const briefBlock = buildBriefBlock(input.brief ?? "", language);
+
   const filled = template
     .replaceAll("{{chapterNumber}}", String(input.chapterNumber))
+    .replaceAll("{{brief_block}}", briefBlock)
     .replaceAll("{{previous_chapter_ending_excerpt}}", input.previousChapterEndingExcerpt)
     .replaceAll("{{recent_summaries}}", input.recentSummaries)
     .replaceAll("{{current_arc_prose}}", input.currentArcProse)
@@ -264,6 +272,28 @@ export function buildPlannerUserMessage(input: PlannerUserMessageInput): string 
 
   const golden = buildGoldenOpeningGuidance(input.chapterNumber, language);
   return golden ? `${filled}\n\n${golden}` : filled;
+}
+
+/**
+ * Brief is the user's original creative document. It's the highest authority
+ * source for "what this book is". story_frame/volume_map are the architect's
+ * abstraction of brief; chapter memos must honor brief first.
+ *
+ * Returns "" when no brief exists (legacy books without brief.md).
+ */
+function buildBriefBlock(brief: string, language: "zh" | "en"): string {
+  const trimmed = brief.trim();
+  if (!trimmed) return "";
+  if (language === "en") {
+    return `## Creative brief (user's original intent — authoritative)
+${trimmed}
+
+The brief is the user's direct instruction. When planning this chapter, honor the brief's core setup (protagonist concept, world premise, opening mechanics, sample chapter hooks if any) before anything else. Do NOT defer the brief's core setup to later chapters; land it early.`;
+  }
+  return `## 用户创作 brief（原始意图——最高优先级）
+${trimmed}
+
+brief 是用户的直接指令。本章规划时，必须优先兑现 brief 里写明的核心设定（主角设定、世界前提、开场机制、样本章回钩子等）。**不要把 brief 里的核心设定推迟到后面的章节**——该在前几章落地的必须落地。`;
 }
 
 // ---------------------------------------------------------------------------
