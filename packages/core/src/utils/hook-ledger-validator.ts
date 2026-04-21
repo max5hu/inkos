@@ -67,7 +67,8 @@ export function parseHookLedger(memoBody: string): HookLedger {
     return { open: [], advance: [], resolve: [], defer: [], newOpenCount: 0 };
   }
 
-  const result: Record<"open" | "advance" | "resolve" | "defer", HookLedgerEntry[]> = {
+  type Subsection = "open" | "advance" | "resolve" | "defer";
+  const result: Record<Subsection, HookLedgerEntry[]> = {
     open: [],
     advance: [],
     resolve: [],
@@ -75,14 +76,14 @@ export function parseHookLedger(memoBody: string): HookLedger {
   };
   let newOpenCount = 0;
 
-  let current: "open" | "advance" | "resolve" | "defer" | null = null;
+  let current: Subsection | null = null;
   for (const rawLine of section.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line.length === 0) continue;
 
     const subHeadingMatch = line.match(/^(open|advance|resolve|defer)\s*[:：]?\s*$/i);
     if (subHeadingMatch) {
-      current = subHeadingMatch[1]!.toLowerCase() as typeof current;
+      current = subHeadingMatch[1]!.toLowerCase() as Subsection;
       continue;
     }
 
