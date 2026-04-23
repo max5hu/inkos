@@ -15,6 +15,19 @@ import type {
   ToolCall as PiToolCall,
 } from "@mariozechner/pi-ai";
 import { resolveServicePreset } from "./service-presets.js";
+import { getProvider } from "./providers/index.js";
+import { lookupModel } from "./providers/lookup.js";
+
+let providersDeprecationWarnedOnce = false;
+function warnOnceAboutMaxTokensDeprecation(): void {
+  if (providersDeprecationWarnedOnce) return;
+  providersDeprecationWarnedOnce = true;
+  console.warn(
+    "[inkos] config.maxTokens / maxTokensCap 已被 providers 接管：" +
+      "各模型的真实 maxOutput / contextWindow 来自 providers/<name>.ts。" +
+      "2.0.0 将彻底删除 LLMConfig.maxTokens / maxTokensCap 字段。",
+  );
+}
 
 // === Streaming Monitor Types ===
 
@@ -141,10 +154,12 @@ export interface ChatWithToolsResult {
 // === Factory ===
 
 export function createLLMClient(config: LLMConfig): LLMClient {
+  // 提前查一次 modelCard 以便给 defaults.maxTokens 做 fallback（A 组过渡期逻辑，见下面 piModel 再查一次是幂等的）
+  const _earlyCard = lookupModel(config.service ?? "custom", config.model);
   const defaults = {
     temperature: config.temperature ?? 0.7,
-    // fallback: agent 没传 per-call 时用这个
-    maxTokens: config.maxTokens ?? 8192,
+    // fallback: agent 没传 per-call 时用这个。优先 config.maxTokens（过渡期兼容），否则 modelCard.maxOutput，否则 8192
+    maxTokens: config.maxTokens ?? _earlyCard?.maxOutput ?? 8192,
     // cap: 只在用户显式配 maxTokensCap 时生效；默认 null = 不封顶 per-call。
     // **禁止**改成 `config.maxTokens ?? null` —— 那样会让 architect 的 per-call
     // 16384 被用户 config.maxTokens=8192 自动裁剪，基础设定输出会被截断。
@@ -159,23 +174,31 @@ export function createLLMClient(config: LLMConfig): LLMClient {
   // --- Build pi-ai Model object ---
   const serviceName = config.service ?? "custom";
   const preset = resolveServicePreset(serviceName);
-  const piApi = resolvePiApi(serviceName, config.apiFormat, preset?.api) as PiApi;
-  const baseUrl = config.baseUrl || preset?.baseUrl || "";
+  const inkosProvider = getProvider(serviceName);
+  const modelCard = lookupModel(serviceName, config.model);
+
+  // A 组过渡期：命中 modelCard 时打一次性 warning（表示用户的 maxTokens 配置已被 providers 接管）
+  if (modelCard) {
+    warnOnceAboutMaxTokensDeprecation();
+  }
+
+  const piApi = resolvePiApi(serviceName, config.apiFormat, (inkosProvider?.api ?? preset?.api) as PiApi) as PiApi;
+  const baseUrl = config.baseUrl || inkosProvider?.baseUrl || preset?.baseUrl || "";
   const extraHeaders = config.headers ?? parseEnvHeaders();
 
   const provider = config.provider === "anthropic" ? "anthropic" : "openai";
 
   const piModel: PiModel<PiApi> = {
-    id: config.model,
-    name: config.model,
+    id: modelCard?.deploymentName ?? config.model,
+    name: modelCard?.displayName ?? config.model,
     api: piApi,
     provider,
     baseUrl,
-    reasoning: (config.thinkingBudget ?? 0) > 0,
-    input: ["text"] as ("text" | "image")[],
+    reasoning: modelCard?.abilities?.reasoning ?? (config.thinkingBudget ?? 0) > 0,
+    input: modelCard?.abilities?.vision ? ["text", "image"] : ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128_000,
-    maxTokens: config.maxTokens ?? 8192,
+    contextWindow: modelCard?.contextWindowTokens ?? 128_000,
+    maxTokens: modelCard?.maxOutput ?? config.maxTokens ?? 8192,
     ...(extraHeaders ? { headers: extraHeaders } : {}),
   };
 
