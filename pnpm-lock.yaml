@@ -85,7 +85,7 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1
       zod:
-        specifier: ^3.24.0
+        specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
       '@types/js-yaml':
