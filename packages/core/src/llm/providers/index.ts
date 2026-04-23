@@ -31,6 +31,14 @@ import { HIGRESS } from "./higress.js";
 import { INFINIAI } from "./infiniai.js";
 import { ZEROONE } from "./zeroone.js";
 import { AI360 } from "./ai360.js";
+// B4
+import { OLLAMA } from "./ollama.js";
+import { OPENROUTER } from "./openrouter.js";
+import { CUSTOM } from "./custom.js";
+import { MISTRAL } from "./mistral.js";
+import { XAI } from "./xai.js";
+import { NEWAPI } from "./newapi.js";
+import { GITHUB_COPILOT } from "./githubCopilot.js";
 
 export type { InkosProvider, InkosModel, ApiProtocol } from "./types.js";
 
@@ -43,6 +51,7 @@ const ALL_PROVIDERS: readonly InkosProvider[] = [
   MOONSHOT, ZHIPU, SILICONCLOUD, PPIO, BAILIAN, VOLCENGINE, HUNYUAN, BAICHUAN, STEPFUN, WENXIN,
   SPARK, SENSENOVA, TENCENTCLOUD, XIAOMI_MIMO, LONGCAT, INTERNLM,
   MODELSCOPE, GITEEAI, QINIU, HIGRESS, INFINIAI, ZEROONE, AI360,
+  OLLAMA, OPENROUTER, CUSTOM, MISTRAL, XAI, NEWAPI, GITHUB_COPILOT,
 ];
 
 const PROVIDERS_BY_ID: Map<string, InkosProvider> = new Map(

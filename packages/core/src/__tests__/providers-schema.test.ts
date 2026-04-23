@@ -86,4 +86,21 @@ describe("providers structural integrity", () => {
   it("B3：higress baseUrl 为空（gateway 占位）", () => {
     expect(getProvider("higress")?.baseUrl).toBe("");
   });
+
+  it("B4：海外/本地/自定义/聚合/GH 全部收录（7 个）", () => {
+    const ids = getAllProviders().map((p) => p.id);
+    for (const id of ["ollama", "openrouter", "custom", "mistral", "xai", "newapi", "githubCopilot"]) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it("B4：custom / newapi / higress baseUrl 为空", () => {
+    expect(getProvider("custom")?.baseUrl).toBe("");
+    expect(getProvider("newapi")?.baseUrl).toBe("");
+    expect(getProvider("higress")?.baseUrl).toBe("");
+  });
+
+  it("B4：总 provider 数 = 36", () => {
+    expect(getAllProviders().length).toBe(36);
+  });
 });

@@ -1,0 +1,31 @@
+import type { InkosProvider } from "./types.js";
+
+export const MISTRAL: InkosProvider = {
+  id: "mistral",
+  label: "Mistral AI",
+  api: "openai-completions",
+  baseUrl: "https://api.mistral.ai/v1",
+  checkModel: "mistral-small-latest",
+  temperatureRange: [0, 1],
+  defaultTemperature: 0.7,
+  writingTemperature: 1,
+  models: [
+    { id: "devstral-2512", displayName: "Devstral 2", maxOutput: 4096, contextWindowTokens: 262144, abilities: { functionCall: true }, releasedAt: "2025-12-09" },
+    { id: "labs-devstral-small-2512", displayName: "Devstral Small 2", maxOutput: 4096, contextWindowTokens: 262144, abilities: { functionCall: true }, releasedAt: "2025-12-09" },
+    { id: "mistral-medium-2508", displayName: "Mistral Medium 3.1", maxOutput: 4096, contextWindowTokens: 131072, abilities: { functionCall: true }, enabled: true },
+    { id: "magistral-medium-2509", displayName: "Magistral Medium 1.2", maxOutput: 4096, contextWindowTokens: 131072, abilities: { reasoning: true, vision: true } },
+    { id: "magistral-small-2509", displayName: "Magistral Small 1.2", maxOutput: 4096, contextWindowTokens: 131072, abilities: { reasoning: true, vision: true } },
+    { id: "open-mistral-nemo", displayName: "Mistral Nemo", maxOutput: 4096, contextWindowTokens: 131072, abilities: { vision: true, functionCall: true } },
+    { id: "mistral-small-2603", displayName: "Mistral Small 4", maxOutput: 4096, contextWindowTokens: 256000, abilities: { reasoning: true, vision: true, functionCall: true }, releasedAt: "2026-03-16" },
+    { id: "mistral-small-2506", displayName: "Mistral Small 3.2", maxOutput: 4096, contextWindowTokens: 131072, abilities: { functionCall: true } },
+    { id: "mistral-large-2512", displayName: "Mistral Large 3", maxOutput: 4096, contextWindowTokens: 256000, abilities: { vision: true, functionCall: true }, enabled: true, releasedAt: "2025-12-02" },
+    { id: "mistral-large-2411", displayName: "Mistral Large 2.1", maxOutput: 4096, contextWindowTokens: 131072, abilities: { vision: true, functionCall: true } },
+    { id: "codestral-latest", displayName: "Codestral 2508", maxOutput: 4096, contextWindowTokens: 256000, abilities: { functionCall: true }, releasedAt: "2025-07-30" },
+    { id: "pixtral-large-latest", displayName: "Pixtral Large", maxOutput: 4096, contextWindowTokens: 131072, abilities: { vision: true, functionCall: true } },
+    { id: "pixtral-12b-2409", displayName: "Pixtral 12B", maxOutput: 4096, contextWindowTokens: 131072, abilities: { vision: true, functionCall: true } },
+    { id: "ministral-3b-latest", displayName: "Ministral 3B", maxOutput: 4096, contextWindowTokens: 131072, abilities: { functionCall: true } },
+    { id: "ministral-8b-latest", displayName: "Ministral 8B", maxOutput: 4096, contextWindowTokens: 131072, abilities: { functionCall: true } },
+    { id: "open-codestral-mamba", displayName: "Codestral Mamba", maxOutput: 4096, contextWindowTokens: 256000 },
+    { id: "labs-leanstral-2603", displayName: "Leanstral", maxOutput: 4096, contextWindowTokens: 256000, abilities: { vision: true, functionCall: true }, releasedAt: "2026-03-16" },
+  ],
+};
