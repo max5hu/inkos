@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { fetchJson } from "../hooks/use-api";
 import { useServiceStore } from "../store/service";
 import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
-import { ServiceConfigSourceCard } from "../components/ServiceConfigSourceCard";
 import {
+  matchServiceConfigEntryForDetail,
   probeServiceForDetail,
   rehydrateServiceConnectionStatus,
   saveServiceConfigWithValidation,
@@ -48,7 +48,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const [customName, setCustomName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [temperature, setTemperature] = useState("0.7");
-  const [maxTokens, setMaxTokens] = useState("4096");
   const [apiFormat, setApiFormat] = useState<"chat" | "responses">("chat");
   const [stream, setStream] = useState(true);
   const [detectedModel, setDetectedModel] = useState<string>("");
@@ -62,20 +61,13 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
     void fetchJson<{ services: Array<Record<string, unknown>> }>("/services/config")
       .then((data) => {
         if (cancelled) return;
-        const matched = (data.services ?? []).find((entry) => {
-          if (typeof entry.service !== "string") return false;
-          if (serviceId.startsWith("custom:")) {
-            return entry.service === "custom" && `custom:${String(entry.name ?? "")}` === serviceId;
-          }
-          return entry.service === serviceId;
-        });
+        const matched = matchServiceConfigEntryForDetail(data.services ?? [], serviceId);
         if (!matched) return;
         if (isCustom) {
           setCustomName(String(matched.name ?? persistedCustomName));
           setBaseUrl(String(matched.baseUrl ?? ""));
         }
         if (typeof matched.temperature === "number") setTemperature(String(matched.temperature));
-        if (typeof matched.maxTokens === "number") setMaxTokens(String(matched.maxTokens));
         if (matched.apiFormat === "chat" || matched.apiFormat === "responses") setApiFormat(matched.apiFormat);
         if (typeof matched.stream === "boolean") setStream(matched.stream);
       })
@@ -86,12 +78,10 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   const resolvedCustomName = persistedCustomName || customName.trim() || "Custom";
   const effectiveServiceId = isCustom ? `custom:${resolvedCustomName}` : serviceId;
   const label = isCustom ? (customName || persistedCustomName || "自定义服务") : (svc?.label ?? serviceId);
+  const storeModels = useServiceStore((s) => s.modelsByService[effectiveServiceId]);
 
   useEffect(() => {
     let cancelled = false;
-    if (svc?.connected) {
-      setStatus({ state: "testing" });
-    }
     void rehydrateServiceConnectionStatus({
       effectiveServiceId,
       shouldVerify: Boolean(svc?.connected),
@@ -108,8 +98,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         setStatus(result.status);
         if (result.status.state === "connected") {
           setStoreModels(effectiveServiceId, result.status.models);
-        } else {
-          clearStoreModels(effectiveServiceId);
         }
       })
       .catch(() => {
@@ -120,7 +108,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   }, [
     apiFormat,
     baseUrl,
-    clearStoreModels,
     effectiveServiceId,
     isCustom,
     setStoreModels,
@@ -131,8 +118,8 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
   if (loading) return <DetailSkeleton />;
 
   // -- Derived state --
-  const isConnected = status.state === "connected";
-  const models = status.state === "connected" ? status.models : [];
+  const isConnected = Boolean(svc?.connected);
+  const models = status.state === "connected" ? status.models : (storeModels ?? []);
   const isBusy = status.state === "testing" || status.state === "saving";
 
   // -- Handlers --
@@ -192,7 +179,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         apiFormat,
         stream,
         temperature,
-        maxTokens,
         detectedModel,
       });
       if (result.status.state === "connected") {
@@ -236,8 +222,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
           </span>
         )}
       </div>
-
-      <ServiceConfigSourceCard onChange={() => { void refreshServices(); }} />
 
       <div className="space-y-5">
         {/* Custom fields */}
@@ -321,18 +305,22 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
         </div>
 
         {/* Models */}
-        {models.length > 0 && (
+        {isConnected && (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground/70 font-medium uppercase tracking-wider">
               可用模型（{models.length}）
             </p>
-            <div className="flex gap-1.5 flex-wrap">
-              {models.map((m) => (
-                <span key={m.id} className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400 border border-emerald-500/15">
-                  {m.name ?? m.id}
-                </span>
-              ))}
-            </div>
+            {models.length > 0 ? (
+              <div className="flex gap-1.5 flex-wrap">
+                {models.map((m) => (
+                  <span key={m.id} className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400 border border-emerald-500/15">
+                    {m.name ?? m.id}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground/60">点击“测试连接”查看可用模型</p>
+            )}
           </div>
         )}
 
@@ -349,10 +337,6 @@ export function ServiceDetailPage({ serviceId, nav }: { serviceId: string; nav: 
                 <input type="number" value={temperature} onChange={(e) => setTemperature(e.target.value)}
                   min="0" max="2" step="0.05" className="w-16 rounded-md border border-border/60 bg-background px-2 py-1 text-xs text-right font-mono" />
               </div>
-            </Field>
-            <Field label="maxTokens">
-              <input type="number" value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)}
-                min="256" max="200000" step="256" className="w-full rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs font-mono" />
             </Field>
           </div>
         </details>

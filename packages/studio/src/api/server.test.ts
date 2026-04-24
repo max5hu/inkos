@@ -513,7 +513,6 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({
         language: "en",
         temperature: 0.2,
-        maxTokens: 2048,
         stream: true,
       }),
     });
@@ -524,7 +523,6 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(project.json()).resolves.toMatchObject({
       language: "en",
       temperature: 0.2,
-      maxTokens: 2048,
       stream: true,
     });
   });
@@ -776,7 +774,7 @@ describe("createStudioServer daemon lifecycle", () => {
       ...projectConfig,
       llm: {
         services: [
-          { service: "moonshot", temperature: 1, maxTokens: 4096, apiFormat: "chat", stream: true },
+          { service: "moonshot", temperature: 1, apiFormat: "chat", stream: true },
           { service: "custom", name: "内网GPT", baseUrl: "https://llm.internal.corp/v1", temperature: 0.9, apiFormat: "responses", stream: false },
         ],
         defaultModel: "kimi-k2.5",
@@ -793,7 +791,6 @@ describe("createStudioServer daemon lifecycle", () => {
         services: {
           moonshot: {
             temperature: 0.5,
-            maxTokens: 2048,
             apiFormat: "responses",
             stream: false,
           },
@@ -805,7 +802,7 @@ describe("createStudioServer daemon lifecycle", () => {
 
     const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
     expect(raw.llm.services).toEqual([
-      { service: "moonshot", temperature: 0.5, maxTokens: 2048, apiFormat: "responses", stream: false },
+      { service: "moonshot", temperature: 0.5, apiFormat: "responses", stream: false },
       { service: "custom", name: "内网GPT", baseUrl: "https://llm.internal.corp/v1", temperature: 0.9, apiFormat: "responses", stream: false },
     ]);
   });
@@ -861,7 +858,7 @@ describe("createStudioServer daemon lifecycle", () => {
       ...projectConfig,
       llm: {
         services: [
-          { service: "moonshot", temperature: 1, maxTokens: 4096 },
+          { service: "moonshot", temperature: 1 },
         ],
         defaultModel: "kimi-k2.5",
         configSource: "env",
@@ -882,7 +879,7 @@ describe("createStudioServer daemon lifecycle", () => {
     const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
     expect(raw.llm.configSource).toBe("studio");
     expect(raw.llm.services).toEqual([
-      { service: "moonshot", temperature: 1, maxTokens: 4096 },
+      { service: "moonshot", temperature: 1 },
     ]);
     expect(raw.llm.defaultModel).toBe("kimi-k2.5");
   });

@@ -132,7 +132,6 @@ interface ServiceConfigEntry {
   name?: string;
   baseUrl?: string;
   temperature?: number;
-  maxTokens?: number;
   apiFormat?: "chat" | "responses";
   stream?: boolean;
 }
@@ -185,7 +184,6 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
       name: decodeURIComponent(serviceId.slice("custom:".length)),
       ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
-      ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
     };
@@ -197,7 +195,6 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
       ...(typeof value.name === "string" && value.name.length > 0 ? { name: value.name } : {}),
       ...(typeof value.baseUrl === "string" && value.baseUrl.length > 0 ? { baseUrl: value.baseUrl } : {}),
       ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
-      ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
       ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
       ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
     };
@@ -206,7 +203,6 @@ function normalizeServiceEntry(serviceId: string, value: Record<string, unknown>
   return {
     service: serviceId,
     ...(typeof value.temperature === "number" ? { temperature: value.temperature } : {}),
-    ...(typeof value.maxTokens === "number" ? { maxTokens: value.maxTokens } : {}),
     ...(value.apiFormat === "chat" || value.apiFormat === "responses" ? { apiFormat: value.apiFormat } : {}),
     ...(typeof value.stream === "boolean" ? { stream: value.stream } : {}),
   };
@@ -225,7 +221,6 @@ function normalizeServiceConfig(raw: unknown): ServiceConfigEntry[] {
         ...(typeof entry.name === "string" && entry.name.length > 0 ? { name: entry.name } : {}),
         ...(typeof entry.baseUrl === "string" && entry.baseUrl.length > 0 ? { baseUrl: entry.baseUrl } : {}),
         ...(typeof entry.temperature === "number" ? { temperature: entry.temperature } : {}),
-        ...(typeof entry.maxTokens === "number" ? { maxTokens: entry.maxTokens } : {}),
         ...(entry.apiFormat === "chat" || entry.apiFormat === "responses" ? { apiFormat: entry.apiFormat } : {}),
         ...(typeof entry.stream === "boolean" ? { stream: entry.stream } : {}),
       }));
@@ -1181,9 +1176,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       // Merge LLM settings
       if (updates.temperature !== undefined) {
         existing.llm.temperature = updates.temperature;
-      }
-      if (updates.maxTokens !== undefined) {
-        existing.llm.maxTokens = updates.maxTokens;
       }
       if (updates.stream !== undefined) {
         existing.llm.stream = updates.stream;
