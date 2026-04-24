@@ -1214,6 +1214,49 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(new Set(chatCompletionMock.mock.calls.map((call) => call[1]))).toEqual(new Set(["gemini-2.5-flash"]));
   });
 
+  it("returns a Google-specific diagnostic when Gemini probe returns 400", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        services: [
+          { service: "google", apiFormat: "chat", stream: false },
+        ],
+      },
+    }, null, 2), "utf-8");
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "Not Found",
+    });
+    vi.stubGlobal("fetch", fetchMock as typeof fetch);
+    createLLMClientMock.mockImplementation(((cfg: unknown) => cfg) as any);
+    chatCompletionMock.mockRejectedValue(
+      new Error("API 返回 400（请求参数错误）。常见原因：\n  1. temperature / max_tokens 超出模型约束（如 Moonshot kimi-k2.X 强制 temperature=1）\n  (baseUrl: https://generativelanguage.googleapis.com/v1beta/openai, model: gemini-2.5-flash)"),
+    );
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/services/google/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey: "google-key",
+        apiFormat: "chat",
+        stream: false,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const json = await response.json() as { error?: string };
+    expect(json.error).toContain("Google Gemini 测试连接失败");
+    expect(json.error).toContain("测试模型：gemini-2.5-flash");
+    expect(json.error).toContain("API Key 是否来自 Google AI Studio");
+    expect(json.error).toContain("Gemini API");
+    expect(json.error).not.toContain("Moonshot");
+  });
+
   it("uses the preset models baseUrl when listing Bailian models", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,
