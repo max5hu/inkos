@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SSEMessage } from "./use-sse";
 import {
+  applyBookCollectionEvent,
   deriveActiveBookIds,
   deriveBookActivity,
   shouldRefetchBookCollections,
@@ -104,5 +105,25 @@ describe("shouldRefetchDaemonStatus", () => {
     expect(shouldRefetchDaemonStatus(msg("daemon:stopped", {}, 1))).toBe(true);
     expect(shouldRefetchDaemonStatus(msg("daemon:error", {}, 1))).toBe(true);
     expect(shouldRefetchDaemonStatus(msg("daemon:chapter", {}, 1))).toBe(false);
+  });
+});
+
+describe("applyBookCollectionEvent", () => {
+  it("upserts a created book from the event payload without requiring a refetch", () => {
+    const books = [
+      { id: "alpha", title: "Alpha", genre: "urban", status: "active", chaptersWritten: 3 },
+    ];
+
+    expect(applyBookCollectionEvent(books, msg("book:created", {
+      bookId: "beta",
+      book: { id: "beta", title: "Beta", genre: "xuanhuan", status: "outlining", chaptersWritten: 0 },
+    }, 1))).toEqual([
+      { id: "alpha", title: "Alpha", genre: "urban", status: "active", chaptersWritten: 3 },
+      { id: "beta", title: "Beta", genre: "xuanhuan", status: "outlining", chaptersWritten: 0 },
+    ]);
+  });
+
+  it("returns null when a collection event lacks enough data for incremental update", () => {
+    expect(applyBookCollectionEvent([], msg("book:created", { bookId: "beta" }, 1))).toBeNull();
   });
 });

@@ -12,8 +12,10 @@ import { writeExportArtifact } from "../interaction/export-artifact.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function textResult(text: string): AgentToolResult<undefined> {
-  return { content: [{ type: "text", text }], details: undefined };
+function textResult(text: string): AgentToolResult<undefined>;
+function textResult<T>(text: string, details: T): AgentToolResult<T>;
+function textResult<T = undefined>(text: string, details?: T): AgentToolResult<T> {
+  return { content: [{ type: "text", text }], details: details as T };
 }
 
 /**
@@ -125,7 +127,7 @@ export function createSubAgentTool(
       params: Static<typeof SubAgentParams>,
       _signal?: AbortSignal,
       onUpdate?: AgentToolUpdateCallback,
-    ): Promise<AgentToolResult<undefined>> {
+    ): Promise<AgentToolResult<unknown>> {
       const { agent, instruction, bookId, title, chapterNumber, genre, platform, language, targetChapters, chapterWordCount, revise, feedback, mode, format, approvedOnly } = params;
 
       const progress = (msg: string) => {
@@ -172,7 +174,10 @@ export function createSubAgentTool(
               { externalContext: instruction },
             );
             progress(`Architect finished — book "${id}" foundation created.`);
-            return textResult(`Book "${resolvedTitle}" (${id}) initialised successfully. Foundation files are ready.`);
+            return textResult(
+              `Book "${resolvedTitle}" (${id}) initialised successfully. Foundation files are ready.`,
+              { kind: "book_created", bookId: id, title: resolvedTitle },
+            );
           }
 
           case "writer": {

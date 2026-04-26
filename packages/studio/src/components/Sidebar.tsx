@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApi } from "../hooks/use-api";
 import type { SSEMessage } from "../hooks/use-sse";
-import { shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
+import { applyBookCollectionEvent, shouldRefetchBookCollections, shouldRefetchDaemonStatus } from "../hooks/use-book-activity";
 import type { TFunction } from "../hooks/use-i18n";
 import { useChatStore } from "../store/chat";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -65,7 +65,7 @@ export function Sidebar({ nav, activePage, sse, t }: {
   sse: { messages: ReadonlyArray<SSEMessage> };
   t: TFunction;
 }) {
-  const { data, refetch: refetchBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
+  const { data, refetch: refetchBooks, mutate: mutateBooks } = useApi<{ books: ReadonlyArray<BookSummary> }>("/books");
   const { data: daemon, refetch: refetchDaemon } = useApi<{ running: boolean }>("/daemon");
   const sessions = useChatStore((s) => s.sessions);
   const sessionIdsByBook = useChatStore((s) => s.sessionIdsByBook);
@@ -88,12 +88,22 @@ export function Sidebar({ nav, activePage, sse, t }: {
     const recent = sse.messages.at(-1);
     if (!recent) return;
     if (shouldRefetchBookCollections(recent)) {
+      let appliedIncrementally = false;
+      mutateBooks((current) => {
+        const updatedBooks = applyBookCollectionEvent(current?.books ?? [], recent);
+        if (!updatedBooks) return current;
+        appliedIncrementally = true;
+        return { books: updatedBooks };
+      });
+      if (appliedIncrementally) {
+        return;
+      }
       refetchBooks();
     }
     if (shouldRefetchDaemonStatus(recent)) {
       refetchDaemon();
     }
-  }, [refetchBooks, refetchDaemon, sse.messages]);
+  }, [mutateBooks, refetchBooks, refetchDaemon, sse.messages]);
 
   // bookDataVersion 变化（外部数据信号）时才重拉当前已展开书的 session 列表；
   // 展开/折叠本身不触发请求（展开由 toggleBook 驱动，已带"首次加载"判断）。

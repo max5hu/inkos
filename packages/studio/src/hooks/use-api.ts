@@ -164,7 +164,7 @@ export function useApi<T>(path: string) {
     };
   }, [path, refetch]);
 
-  return { data, loading, error, refetch };
+  return { data, loading, error, refetch, mutate: setData };
 }
 
 export async function postApi<T>(path: string, body?: unknown): Promise<T> {

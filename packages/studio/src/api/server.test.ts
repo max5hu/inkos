@@ -130,8 +130,8 @@ vi.mock("@actalk/inkos-core", () => {
       return [];
     }
 
-    async loadBookConfig(): Promise<never> {
-      return await loadBookConfigMock() as never;
+    async loadBookConfig(bookId?: string): Promise<never> {
+      return await loadBookConfigMock(bookId) as never;
     }
 
     async loadChapterIndex(bookId: string): Promise<[]> {
@@ -146,7 +146,7 @@ vi.mock("@actalk/inkos-core", () => {
       return (await rollbackToChapterMock(bookId, chapterNumber)) as number[];
     }
 
-    async getNextChapterNumber(): Promise<number> {
+    async getNextChapterNumber(_bookId?: string): Promise<number> {
       return 1;
     }
 
@@ -1921,6 +1921,81 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(response.json()).resolves.toEqual({
       response: "你好！",
       session: { sessionId: "agent-session-1" },
+    });
+  });
+
+  it("migrates and exposes a book created by architect even when the final agent text is empty", async () => {
+    const orphanSession = {
+      sessionId: "agent-session-1",
+      bookId: null,
+      title: null,
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    loadBookSessionMock.mockResolvedValue(orphanSession);
+    appendBookSessionMessageMock.mockImplementation((session: unknown) => session);
+    migrateBookSessionMock.mockResolvedValue({
+      ...orphanSession,
+      bookId: "new-book",
+    });
+    loadBookConfigMock.mockImplementation(async (bookId?: string) => ({
+      id: bookId ?? "new-book",
+      title: "New Book",
+      platform: "qidian",
+      genre: "urban",
+      status: "outlining",
+      targetChapters: 100,
+      chapterWordCount: 3000,
+      createdAt: "2026-04-12T00:00:00.000Z",
+      updatedAt: "2026-04-12T00:00:00.000Z",
+    }));
+    runAgentSessionMock.mockImplementationOnce(async (config: { onEvent?: (event: unknown) => void }) => {
+      config.onEvent?.({
+        type: "tool_execution_start",
+        toolCallId: "tool-1",
+        toolName: "sub_agent",
+        args: { agent: "architect", title: "New Book" },
+      });
+      config.onEvent?.({
+        type: "tool_execution_end",
+        toolCallId: "tool-1",
+        toolName: "sub_agent",
+        isError: false,
+        result: {
+          content: [{ type: "text", text: "Book created." }],
+          details: { kind: "book_created", bookId: "new-book", title: "New Book" },
+        },
+      });
+      return {
+        responseText: "",
+        messages: [{ role: "user", content: "/new New Book" }],
+      };
+    });
+    chatCompletionMock.mockResolvedValueOnce({
+      content: "建书完成。",
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction: "写一本都市商战", sessionId: "agent-session-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(migrateBookSessionMock).toHaveBeenCalledWith(root, "agent-session-1", "new-book");
+    await expect(response.json()).resolves.toMatchObject({
+      response: "建书完成。",
+      session: {
+        sessionId: "agent-session-1",
+        activeBookId: "new-book",
+      },
     });
   });
 
