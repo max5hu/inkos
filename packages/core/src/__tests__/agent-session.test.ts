@@ -269,7 +269,7 @@ describe("runAgentSession cache — bookId switch", () => {
   });
 
   it("把真实 Agent 的 message_end 写入 JSONL，并在 cache 失效后恢复 raw AgentMessage", async () => {
-    const model = { provider: "x", id: "y", api: "anthropic-messages" } as any;
+    const model = { provider: "anthropic", id: "fake", api: "anthropic-messages" } as any;
     const pipeline = {} as any;
 
     await runAgentSession(

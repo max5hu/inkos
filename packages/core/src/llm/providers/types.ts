@@ -54,6 +54,7 @@ export interface ProviderCompat {
   readonly supportsStore?: boolean;
   readonly supportsSystemRole?: boolean;
   readonly supportsDeveloperRole?: boolean;
+  readonly requiresAssistantAfterToolResult?: boolean;
 }
 
 export interface ProviderTransportDefaults {

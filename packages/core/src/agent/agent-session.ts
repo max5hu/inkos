@@ -22,7 +22,10 @@ import {
   nextTranscriptSeq,
   readTranscriptEvents,
 } from "../interaction/session-transcript.js";
-import { restoreAgentMessagesFromTranscript } from "../interaction/session-transcript-restore.js";
+import {
+  adaptRestoredAgentMessagesForModel,
+  restoreAgentMessagesFromTranscript,
+} from "../interaction/session-transcript-restore.js";
 import type { TranscriptRole } from "../interaction/session-transcript-schema.js";
 
 // ---------------------------------------------------------------------------
@@ -344,7 +347,10 @@ export async function runAgentSession(
 
   if (!cached) {
     const model = resolveModel(config.model);
-    const restoredMessages = await restoreAgentMessagesFromTranscript(projectRoot, sessionId);
+    const restoredMessages = adaptRestoredAgentMessagesForModel(
+      await restoreAgentMessagesFromTranscript(projectRoot, sessionId),
+      model,
+    );
     const initialAgentMessages = restoredMessages.length > 0
       ? restoredMessages
       : initialMessages && initialMessages.length > 0

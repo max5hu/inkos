@@ -59,6 +59,49 @@ function removeTrailingThinking(message: AgentMessage): AgentMessage {
   return { ...message, content } as AgentMessage;
 }
 
+const emptyUsage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+const TOOL_RESULT_BRIDGE_TEXT = "I have processed the tool results.";
+
+function toolResultBridgeMessage(timestamp: number): AgentMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: TOOL_RESULT_BRIDGE_TEXT }],
+    api: "openai-completions",
+    provider: "inkos",
+    model: "synthetic-tool-result-bridge",
+    usage: emptyUsage,
+    stopReason: "stop",
+    timestamp,
+  } as AgentMessage;
+}
+
+function addToolResultBridges(messages: AgentMessage[]): AgentMessage[] {
+  const bridged: AgentMessage[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    bridged.push(message);
+
+    if (!isObject(message) || message.role !== "toolResult") continue;
+
+    const next = messages[i + 1];
+    if (isObject(next) && (next.role === "toolResult" || next.role === "assistant")) continue;
+
+    const timestamp = typeof message.timestamp === "number" ? message.timestamp + 1 : Date.now();
+    bridged.push(toolResultBridgeMessage(timestamp));
+  }
+
+  return bridged;
+}
+
 export function cleanRestoredAgentMessages(messages: AgentMessage[]): AgentMessage[] {
   const availableToolCalls = new Set<string>();
   for (const message of messages) {
@@ -84,7 +127,49 @@ export function cleanRestoredAgentMessages(messages: AgentMessage[]): AgentMessa
     cleaned[cleaned.length - 1] = removeTrailingThinking(last);
   }
 
-  return cleaned;
+  return addToolResultBridges(cleaned);
+}
+
+interface TargetModelIdentity {
+  readonly api?: unknown;
+  readonly provider?: unknown;
+  readonly id?: unknown;
+}
+
+function isSameAssistantModel(message: Record<string, unknown>, target: TargetModelIdentity): boolean {
+  return (
+    typeof message.api === "string" &&
+    typeof message.provider === "string" &&
+    typeof message.model === "string" &&
+    message.api === target.api &&
+    message.provider === target.provider &&
+    message.model === target.id
+  );
+}
+
+export function adaptRestoredAgentMessagesForModel(
+  messages: AgentMessage[],
+  target: TargetModelIdentity,
+): AgentMessage[] {
+  return messages
+    .map((message) => {
+      if (
+        !isObject(message) ||
+        message.role !== "assistant" ||
+        !Array.isArray(message.content) ||
+        isSameAssistantModel(message, target)
+      ) {
+        return message;
+      }
+
+      const content = message.content.filter((block) => !isThinkingBlock(block));
+      if (content.length === message.content.length) return message;
+      return { ...message, content } as AgentMessage;
+    })
+    .filter((message) => {
+      if (!isObject(message) || message.role !== "assistant") return true;
+      return hasTextContent(message) || hasToolCallContent(message);
+    });
 }
 
 export function committedMessageEvents(events: TranscriptEvent[]): MessageEvent[] {
@@ -153,7 +238,7 @@ function messageEventToInteractionMessage(event: MessageEvent): InteractionMessa
   if (event.role === "assistant") {
     const content = textFromContent(raw.content);
     const thinking = thinkingFromContent(raw.content) ?? event.legacyDisplay?.thinking;
-    if (!content && !thinking) return null;
+    if (!content) return null;
     return {
       role: "assistant",
       content,

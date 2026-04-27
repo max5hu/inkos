@@ -16,7 +16,7 @@ export const GOOGLE: InkosEndpoint = {
   api: "openai-completions",
   baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
   checkModel: "gemini-2.5-flash",
-  compat: { supportsStore: false },
+  compat: { supportsStore: false, requiresAssistantAfterToolResult: true },
   temperatureRange: [0, 2],
   defaultTemperature: 1,
   writingTemperature: 1,

@@ -21,6 +21,7 @@ export const DEEPSEEK: InkosEndpoint = {
   api: "openai-completions",
   baseUrl: "https://api.deepseek.com",
   checkModel: "deepseek-v4-flash",
+  compat: { requiresAssistantAfterToolResult: true },
   temperatureRange: [0, 2],
   defaultTemperature: 1,
   writingTemperature: 1.5,

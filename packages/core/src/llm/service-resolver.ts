@@ -2,6 +2,8 @@ import { getModel } from "@mariozechner/pi-ai";
 import type { Model, Api } from "@mariozechner/pi-ai";
 import { resolveServicePiProvider, resolveServicePreset } from "./service-presets.js";
 import { getServiceApiKey } from "./secrets.js";
+import { getEndpoint } from "./providers/index.js";
+import type { InkosEndpoint } from "./providers/types.js";
 
 export interface ResolvedModel {
   model: Model<Api>;
@@ -9,6 +11,17 @@ export interface ResolvedModel {
   writingTemperature?: number;
   temperatureRange?: readonly [number, number];
   temperatureHint?: string;
+}
+
+function resolveProviderCompat(
+  provider: InkosEndpoint | undefined,
+  baseUrl: string,
+): Record<string, unknown> | undefined {
+  const compat = {
+    ...(provider?.compat ?? {}),
+    ...(baseUrl.includes("generativelanguage.googleapis.com") ? { supportsStore: false } : {}),
+  };
+  return Object.keys(compat).length > 0 ? compat : undefined;
 }
 
 export async function resolveServiceModel(
@@ -29,6 +42,7 @@ export async function resolveServiceModel(
   // Determine pi-ai provider
   const baseService = service.startsWith("custom:") ? "custom" : service;
   const preset = resolveServicePreset(baseService);
+  const endpoint = getEndpoint(baseService);
   const piProvider = resolveServicePiProvider(baseService) ?? "openai";
   const apiType = service.startsWith("custom:")
     ? (customApiFormat === "responses" ? "openai-responses" : "openai-completions")
@@ -38,6 +52,9 @@ export async function resolveServiceModel(
   // Get pi-ai Model — may return undefined for model IDs not in the built-in registry
   const piModel = getModel(piProvider as any, modelId as any) as Model<Api> | undefined;
   const effectiveBaseUrl = configuredBaseUrl || piModel?.baseUrl || "";
+  const compat = apiType === "openai-completions"
+    ? resolveProviderCompat(endpoint, effectiveBaseUrl)
+    : undefined;
 
   if (!effectiveBaseUrl) {
     throw new Error(
@@ -56,6 +73,7 @@ export async function resolveServiceModel(
     cost: piModel?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: piModel?.contextWindow ?? 0,
     maxTokens: piModel?.maxTokens ?? 16384,
+    ...(compat ? { compat: compat as Model<Api>["compat"] } : {}),
   };
 
   return {

@@ -84,6 +84,35 @@ describe("resolveServiceModel", () => {
     expect(result.temperatureRange).toEqual([0, 2]);
   });
 
+  it("preserves Google OpenAI-compatible overrides on resolved model", async () => {
+    await mkdir(join(root, ".inkos"), { recursive: true });
+    await writeFile(
+      join(root, ".inkos", "secrets.json"),
+      JSON.stringify({ services: { google: { apiKey: "sk-google" } } }),
+    );
+
+    const result = await resolveServiceModel("google", "gemini-pro-latest", root);
+
+    expect(result.model.api).toBe("openai-completions");
+    expect(result.model.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta/openai");
+    expect(result.model.compat).toMatchObject({
+      supportsStore: false,
+      requiresAssistantAfterToolResult: true,
+    });
+  });
+
+  it("preserves DeepSeek tool-result bridge compatibility on resolved model", async () => {
+    await mkdir(join(root, ".inkos"), { recursive: true });
+    await writeFile(
+      join(root, ".inkos", "secrets.json"),
+      JSON.stringify({ services: { deepseek: { apiKey: "sk-deep" } } }),
+    );
+
+    const result = await resolveServiceModel("deepseek", "deepseek-v4-pro", root);
+
+    expect(result.model.compat).toMatchObject({ requiresAssistantAfterToolResult: true });
+  });
+
   it("constructs model from preset when getModel returns undefined", async () => {
     await mkdir(join(root, ".inkos"), { recursive: true });
     await writeFile(
