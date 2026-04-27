@@ -1138,6 +1138,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         stream.writeSSE({ event, data: JSON.stringify(data) });
       };
       subscribers.add(handler);
+      await stream.writeSSE({ event: "ping", data: "" });
 
       // Keep alive
       const keepAlive = setInterval(() => {
