@@ -42,7 +42,7 @@ import {
   type LogEntry,
 } from "@actalk/inkos-core";
 import { access, readFile, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { isSafeBookId } from "./safety.js";
 import { ApiError } from "./errors.js";
 import { buildStudioBookConfig } from "./book-create.js";
@@ -973,7 +973,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
    */
   function resolveTruthFilePath(bookDir: string, file: string): string | null {
     // Reject absolute paths, traversal, null bytes outright.
-    if (!file || file.includes("\0") || file.startsWith("/") || file.includes("..")) {
+    if (!file || file.includes("\0") || isAbsolute(file) || file.includes("..")) {
       return null;
     }
 
@@ -988,12 +988,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     if (!allowed) return null;
 
-    const storyDir = join(bookDir, "story");
-    const resolved = join(storyDir, file);
-    // Path safety: resolved absolute path must sit inside storyDir. `join`
-    // collapses any `..` segments, so compare against the storyDir prefix.
-    const storyPrefix = storyDir.endsWith("/") ? storyDir : storyDir + "/";
-    if (!resolved.startsWith(storyPrefix) && resolved !== storyDir) {
+    const storyDir = resolve(bookDir, "story");
+    const resolved = resolve(storyDir, file);
+    const relativePath = relative(storyDir, resolved);
+    if (relativePath === "" || relativePath.startsWith("..") || isAbsolute(relativePath)) {
       return null;
     }
     return resolved;
