@@ -243,7 +243,7 @@ export class PlannerAgent extends BaseAgent {
           { role: "system", content: systemPrompt },
           { role: "user", content: currentUserMessage },
         ],
-        { temperature: 0.7, maxTokens: 2000 },
+        { temperature: 0.7 },
       );
 
       try {

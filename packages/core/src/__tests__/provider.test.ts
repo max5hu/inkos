@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Model, Api } from "@mariozechner/pi-ai";
 import {
   __resetFixedTemperatureWarnings,
@@ -403,6 +403,10 @@ describe("chatCompletion fixed-temperature clamp (thinking models)", () => {
     mockStreamSimple.mockReturnValue(makeTextStream("ok"));
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("forces temperature=1 for kimi-k2.5 even when client default is 0.7", async () => {
     const client = makeClient(0.7);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -512,7 +516,7 @@ describe("createLLMClient per-call maxTokens not capped (v2.0.0)", () => {
 });
 
 describe("createLLMClient with providers lookup", () => {
-  it("anthropic + claude-sonnet-4-6 拿到 modelCard 的 maxOutput (64000)，不是 8192 fallback", async () => {
+  it("anthropic + claude-sonnet-4-6 拿到 modelCard 的 maxOutput (64000)，不是未知模型兜底", async () => {
     const { createLLMClient } = await import("../llm/provider.js");
     const { LLMConfigSchema } = await import("../models/project.js");
     const client = createLLMClient(LLMConfigSchema.parse({
@@ -541,7 +545,7 @@ describe("createLLMClient with providers lookup", () => {
     expect(client.defaults.maxTokens).toBe(4096);
   });
 
-  it("未知 model 走保守默认 8192", async () => {
+  it("未知 model 走 8192 * 3 的写作兜底预算", async () => {
     const { createLLMClient } = await import("../llm/provider.js");
     const { LLMConfigSchema } = await import("../models/project.js");
     const client = createLLMClient(LLMConfigSchema.parse({
@@ -551,7 +555,8 @@ describe("createLLMClient with providers lookup", () => {
       apiKey: "test",
       baseUrl: "https://middleman.example/v1",
     }));
-    expect(client.defaults.maxTokens).toBe(8192);
+    expect(client.defaults.maxTokens).toBe(24_576);
+    expect(client._piModel?.maxTokens).toBe(24_576);
   });
 
   it("config.maxTokens 命中 modelCard 后被覆盖（用户填 4000 还是用 modelCard 的 64000）", async () => {

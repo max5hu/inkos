@@ -143,6 +143,24 @@ describe("PlannerAgent.planChapter memo generation", () => {
     expect(result.memo.body).toContain("## 当前任务");
   });
 
+  it("does not hard-cap memo generation below the configured model output budget", async () => {
+    const chatSpy = vi.spyOn(llmProvider, "chatCompletion").mockResolvedValue({
+      content: validMemoRaw(1),
+      usage: ZERO_USAGE,
+    } as unknown as Awaited<ReturnType<typeof llmProvider.chatCompletion>>);
+
+    await makePlanner().planChapter({
+      book: makeBook(),
+      bookDir,
+      chapterNumber: 1,
+    });
+
+    const callArgs = chatSpy.mock.calls[0]!;
+    const options = callArgs[3] as { temperature?: number; maxTokens?: number } | undefined;
+    expect(options).toEqual(expect.objectContaining({ temperature: 0.7 }));
+    expect(options).not.toHaveProperty("maxTokens");
+  });
+
   it("retries when the first response is malformed and succeeds on retry", async () => {
     const chatSpy = vi.spyOn(llmProvider, "chatCompletion")
       .mockResolvedValueOnce({

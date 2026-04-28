@@ -524,7 +524,7 @@ describe("ArchitectAgent", () => {
     await expect(agent.generateFoundation(book)).rejects.toThrow(/book_rules/i);
   });
 
-  it("passes maxTokens 16384 when generating foundation", async () => {
+  it("uses modelCard output budget when generating foundation", async () => {
     const agent = new ArchitectAgent({
       client: {
         provider: "openai",
@@ -581,13 +581,12 @@ describe("ArchitectAgent", () => {
 
     await agent.generateFoundation(book);
 
-    expect(chatSpy).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ temperature: 0.8, maxTokens: 20480 }),
-    );
+    const options = chatSpy.mock.calls[0]?.[1] as { temperature?: number; maxTokens?: number } | undefined;
+    expect(options).toEqual(expect.objectContaining({ temperature: 0.8 }));
+    expect(options).not.toHaveProperty("maxTokens");
   });
 
-  it("passes maxTokens 16384 when generating foundation from import", async () => {
+  it("uses modelCard output budget when generating foundation from import", async () => {
     const agent = new ArchitectAgent({
       client: {
         provider: "openai",
@@ -644,13 +643,12 @@ describe("ArchitectAgent", () => {
 
     await agent.generateFoundationFromImport(book, "第一章正文");
 
-    expect(chatSpy).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ temperature: 0.5, maxTokens: 20480 }),
-    );
+    const options = chatSpy.mock.calls[0]?.[1] as { temperature?: number; maxTokens?: number } | undefined;
+    expect(options).toEqual(expect.objectContaining({ temperature: 0.5 }));
+    expect(options).not.toHaveProperty("maxTokens");
   });
 
-  it("passes maxTokens 16384 when generating fanfic foundation", async () => {
+  it("uses modelCard output budget when generating fanfic foundation", async () => {
     const agent = new ArchitectAgent({
       client: {
         provider: "openai",
@@ -707,10 +705,9 @@ describe("ArchitectAgent", () => {
 
     await agent.generateFanficFoundation(book, "正典文本", "canon");
 
-    expect(chatSpy).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ temperature: 0.7, maxTokens: 20480 }),
-    );
+    const options = chatSpy.mock.calls[0]?.[1] as { temperature?: number; maxTokens?: number } | undefined;
+    expect(options).toEqual(expect.objectContaining({ temperature: 0.7 }));
+    expect(options).not.toHaveProperty("maxTokens");
   });
 
   // ---- Phase 5 段落式架构稿专项 ----

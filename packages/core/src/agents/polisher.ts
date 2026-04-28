@@ -57,7 +57,7 @@ export class PolisherAgent extends BaseAgent {
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { temperature: input.temperature ?? 0.4, maxTokens: 16384 },
+      { temperature: input.temperature ?? 0.4 },
     );
 
     const raw = response.content.trim();

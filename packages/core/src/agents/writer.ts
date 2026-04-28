@@ -260,15 +260,12 @@ export class WriterAgent extends BaseAgent {
       en: `Phase 1: creative writing for chapter ${chapterNumber}`,
     });
 
-    // Scale maxTokens to chapter word count (Chinese ≈ 1.5 tokens/char)
-    const creativeMaxTokens = Math.max(8192, Math.ceil(targetWords * 2));
-
     const creativeResponse = await this.chat(
       [
         { role: "system", content: creativeSystemPrompt },
         { role: "user", content: creativeUserPrompt },
       ],
-      { maxTokens: creativeMaxTokens, temperature: creativeTemperature },
+      { temperature: creativeTemperature },
     );
     const creativeUsage = creativeResponse.usage;
 
@@ -610,15 +607,12 @@ export class WriterAgent extends BaseAgent {
       validationFeedback: params.validationFeedback,
     });
 
-    // Settler outputs all truth files — scale with content size
-    const settlerMaxTokens = Math.max(8192, Math.ceil(params.content.length * 0.8));
-
     const response = await this.chat(
       [
         { role: "system", content: settlerSystem },
         { role: "user", content: settlerUser },
       ],
-      { maxTokens: settlerMaxTokens, temperature: 0.3 },
+      { temperature: 0.3 },
     );
 
     let mergedSettlement: ReturnType<typeof parseSettlementOutput> & {
