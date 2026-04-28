@@ -9,6 +9,8 @@ import { StateManager } from "@actalk/inkos-core";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cliDir = resolve(testDir, "..", "..");
 const cliEntry = resolve(cliDir, "dist", "index.js");
+const CLI_PROCESS_TIMEOUT_MS = 10_000;
+const DOUBLE_CLI_INVOCATION_TEST_TIMEOUT_MS = CLI_PROCESS_TIMEOUT_MS * 2;
 
 let projectDir: string;
 
@@ -35,7 +37,7 @@ function run(args: string[], options?: { env?: Record<string, string> }): string
     cwd: projectDir,
     encoding: "utf-8",
     env: buildTestEnv(options?.env),
-    timeout: 10_000,
+    timeout: CLI_PROCESS_TIMEOUT_MS,
   });
 }
 
@@ -45,7 +47,7 @@ function runStderr(args: string[], options?: { env?: Record<string, string> }): 
       cwd: projectDir,
       encoding: "utf-8",
       env: buildTestEnv(options?.env),
-      timeout: 10_000,
+      timeout: CLI_PROCESS_TIMEOUT_MS,
     });
     return { stdout, stderr: "", exitCode: 0 };
   } catch (e: unknown) {
@@ -432,7 +434,7 @@ describe("CLI integration", () => {
 
       const json = JSON.parse(run(["status", "degraded-status", "--json"]));
       expect(json.books[0]?.degraded).toBe(1);
-    });
+    }, DOUBLE_CLI_INVOCATION_TEST_TIMEOUT_MS);
 
     it("shows a migration hint for legacy pre-v0.6 books", async () => {
       const bookDir = join(projectDir, "books", "legacy-status-hint");
@@ -532,7 +534,7 @@ describe("CLI integration", () => {
 
       const json = JSON.parse(run(["status", bookId, "--json"]));
       expect(json.books[0]?.chapters).toBe(1);
-    });
+    }, DOUBLE_CLI_INVOCATION_TEST_TIMEOUT_MS);
   });
 
   describe("inkos doctor", () => {
