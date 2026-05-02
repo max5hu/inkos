@@ -171,9 +171,14 @@ function extractKeywords(descriptor: string): ReadonlyArray<string> {
   const cjkTokens: string[] = [];
   for (const run of cjkRuns) {
     cjkTokens.push(run);
+    if (run.length >= 3) {
+      for (let index = 0; index <= run.length - 2; index++) {
+        cjkTokens.push(run.slice(index, index + 2));
+      }
+    }
     if (run.length >= 4) {
-      cjkTokens.push(run.slice(0, 2));
-      cjkTokens.push(run.slice(-2));
+      cjkTokens.push(run.slice(0, 3));
+      cjkTokens.push(run.slice(-3));
     }
   }
   const ascii = (source.match(/[A-Za-z]{3,}/g) ?? []).map((w) => w.toLowerCase());

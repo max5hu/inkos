@@ -181,4 +181,14 @@ resolve:
     const violations = validateHookLedger(memo, draft);
     expect(violations).toEqual([]);
   });
+
+  it("accepts middle keywords from a longer Chinese hook name", () => {
+    const memo = `## 本章 hook 账
+advance:
+- H007 "被定位的安全威胁" → evoked → pressured
+`;
+    const draft = "旧手机弹出定位结果，林知夏发现店外有人盯梢，安全空间塌了。";
+    const violations = validateHookLedger(memo, draft);
+    expect(violations).toEqual([]);
+  });
 });
