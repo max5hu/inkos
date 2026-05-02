@@ -575,7 +575,7 @@ function formatServiceProbeError(args: {
     ].filter(Boolean).join("\n");
   }
 
-  if (args.service === "moonshot" || args.service === "kimiCodingPlan") {
+  if (args.service === "moonshot" || args.service === "kimiCodingPlan" || args.service === "kimicode") {
     return [
       `${args.label ?? args.service} 测试连接失败。`,
       context,

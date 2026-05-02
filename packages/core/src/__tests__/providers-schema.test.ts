@@ -117,31 +117,31 @@ describe("providers structural integrity", () => {
     expect(getEndpoint("newapi")?.baseUrl).toBe("");
   });
 
-  it("B4：总 provider 数 = 34（不含 CodingPlan，R5 删 qwen / higress 后）", () => {
-    const nonCoding = getAllEndpoints().filter((p) => !p.id.endsWith("CodingPlan"));
+  it("B4：总 provider 数 = 34（不含 CodingPlan 分组，R5 删 qwen / higress 后）", () => {
+    const nonCoding = getAllEndpoints().filter((p) => p.group !== "codingPlan");
     expect(nonCoding.length).toBe(34);
   });
 
-  it("B6：CodingPlan 7 个 provider 全部收录", () => {
+  it("B6：CodingPlan 8 个 provider 全部收录", () => {
     const ids = getAllEndpoints().map((p) => p.id);
     for (const id of [
       "kimiCodingPlan", "minimaxCodingPlan", "bailianCodingPlan",
       "glmCodingPlan", "volcengineCodingPlan", "opencodeCodingPlan",
-      "astronCodingPlan",
+      "astronCodingPlan", "kimicode",
     ]) {
       expect(ids).toContain(id);
     }
   });
 
-  it("B6：总 provider 数 = 41 (34 base + 7 CodingPlan)", () => {
-    expect(getAllEndpoints().length).toBe(41);
+  it("B6：总 provider 数 = 42 (34 base + 8 CodingPlan)", () => {
+    expect(getAllEndpoints().length).toBe(42);
   });
 
   it("B6：CodingPlan provider 都走 anthropic-messages", () => {
     for (const id of [
       "kimiCodingPlan", "minimaxCodingPlan", "bailianCodingPlan",
       "glmCodingPlan", "volcengineCodingPlan", "opencodeCodingPlan",
-      "astronCodingPlan",
+      "astronCodingPlan", "kimicode",
     ]) {
       expect(getEndpoint(id)?.api).toBe("anthropic-messages");
     }

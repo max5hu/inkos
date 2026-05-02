@@ -6,7 +6,7 @@ import { getAllEndpoints, getEndpoint } from "./index.js";
  * 保证结果确定性。白名单外的 provider 视同 999（排最后）。
  */
 const PROVIDER_PRIORITY: readonly string[] = [
-  "anthropic", "openai", "google", "deepseek", "bailian", "moonshot",
+  "anthropic", "openai", "google", "deepseek", "bailian", "moonshot", "kimicode",
   "zhipu", "minimax", "xai",
   "siliconcloud", "ppio",
   "openrouter", "aihubmix", "novita",

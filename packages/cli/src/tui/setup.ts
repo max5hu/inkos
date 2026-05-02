@@ -13,6 +13,18 @@ import { GLOBAL_ENV_PATH, loadConfig } from "../utils.js";
 import { ensureProjectGitignore } from "../project-bootstrap.js";
 
 const PROVIDERS = ["openai", "anthropic", "custom"] as const;
+type SetupProvider = typeof PROVIDERS[number];
+
+export function resolveSetupProvider(provider: string, baseUrl: string): SetupProvider {
+  const normalizedProvider = PROVIDERS.includes(provider.trim() as SetupProvider)
+    ? provider.trim() as SetupProvider
+    : "openai";
+  const normalizedUrl = baseUrl.trim().toLowerCase();
+  if (normalizedUrl.includes("api.kimi.com/coding")) {
+    return "anthropic";
+  }
+  return normalizedProvider;
+}
 
 interface SetupResult {
   readonly projectRoot: string;
@@ -160,9 +172,9 @@ export async function interactiveLlmSetup(
     console.log(`  ${c("1", cyan)}  ${c(copy.steps.provider, gray)}`);
     console.log(c(`     ${copy.hints.provider}`, dim));
     const providerInput = await rl.question(`     ${c("❯", cyan)} `);
-    const provider = PROVIDERS.includes(providerInput.trim() as typeof PROVIDERS[number])
-      ? providerInput.trim()
-      : copy.defaults.provider;
+    const provider = PROVIDERS.includes(providerInput.trim() as SetupProvider)
+      ? providerInput.trim() as SetupProvider
+      : copy.defaults.provider as SetupProvider;
     console.log(`     ${c("✓", brightGreen)} ${provider}`);
     console.log();
 
@@ -194,9 +206,10 @@ export async function interactiveLlmSetup(
     console.log(c(`     ${copy.hints.scope}`, dim));
     const scope = await rl.question(`     ${c("❯", cyan)} ${c(copy.defaults.scope, dim)} `);
     const useGlobal = scope.trim().toLowerCase() !== "project";
+    const finalProvider = resolveSetupProvider(provider, baseUrl);
 
     const envContent = [
-      `INKOS_LLM_PROVIDER=${provider}`,
+      `INKOS_LLM_PROVIDER=${finalProvider}`,
       `INKOS_LLM_BASE_URL=${baseUrl.trim()}`,
       `INKOS_LLM_API_KEY=${apiKey.trim()}`,
       `INKOS_LLM_MODEL=${model.trim()}`,

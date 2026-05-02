@@ -39,6 +39,7 @@ import { NEWAPI } from "./endpoints/newapi.js";
 import { GITHUB_COPILOT } from "./endpoints/githubCopilot.js";
 // B6 CodingPlan
 import { KIMI_CODING_PLAN } from "./endpoints/kimiCodingPlan.js";
+import { KIMI_CODE } from "./endpoints/kimiCode.js";
 import { MINIMAX_CODING_PLAN } from "./endpoints/minimaxCodingPlan.js";
 import { BAILIAN_CODING_PLAN } from "./endpoints/bailianCodingPlan.js";
 import { GLM_CODING_PLAN } from "./endpoints/glmCodingPlan.js";
@@ -58,8 +59,8 @@ const ALL_PROVIDERS: readonly InkosEndpoint[] = [
   SPARK, SENSENOVA, TENCENTCLOUD, XIAOMI_MIMO, LONGCAT, INTERNLM,
   MODELSCOPE, GITEEAI, QINIU, INFINIAI, ZEROONE, AI360,
   OLLAMA, OPENROUTER, CUSTOM, MISTRAL, XAI, NEWAPI, GITHUB_COPILOT,
-  // B6 CodingPlan（7 个）
-  KIMI_CODING_PLAN, MINIMAX_CODING_PLAN, BAILIAN_CODING_PLAN, GLM_CODING_PLAN, VOLCENGINE_CODING_PLAN, OPENCODE_CODING_PLAN, ASTRON_CODING_PLAN,
+  // B6 CodingPlan（8 个）
+  KIMI_CODING_PLAN, KIMI_CODE, MINIMAX_CODING_PLAN, BAILIAN_CODING_PLAN, GLM_CODING_PLAN, VOLCENGINE_CODING_PLAN, OPENCODE_CODING_PLAN, ASTRON_CODING_PLAN,
 ];
 
 const PROVIDERS_BY_ID: Map<string, InkosEndpoint> = new Map(

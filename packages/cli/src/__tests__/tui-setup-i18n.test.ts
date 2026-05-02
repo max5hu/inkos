@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAutoInitMessages, buildInteractiveSetupCopy } from "../tui/setup.js";
+import { buildAutoInitMessages, buildInteractiveSetupCopy, resolveSetupProvider } from "../tui/setup.js";
 
 describe("tui setup i18n", () => {
   it("builds Chinese setup copy by default", () => {
@@ -14,5 +14,10 @@ describe("tui setup i18n", () => {
   it("builds localized auto-init messages", () => {
     expect(buildAutoInitMessages("山海", "zh-CN").initializing).toContain("正在初始化项目：山海");
     expect(buildAutoInitMessages("harbor", "en").initialized).toContain("Project initialized");
+  });
+
+  it("uses Anthropic protocol for Kimi Code base URLs even when the user picked custom", () => {
+    expect(resolveSetupProvider("custom", "https://api.kimi.com/coding")).toBe("anthropic");
+    expect(resolveSetupProvider("openai", "https://api.kimi.com/coding/v1")).toBe("anthropic");
   });
 });

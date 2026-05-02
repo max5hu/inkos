@@ -2,6 +2,22 @@ import { describe, it, expect } from "vitest";
 import { resolveServicePreset, listModelsForService } from "../llm/service-presets.js";
 
 describe("service-presets regression", () => {
+  describe("Kimi Code preset", () => {
+    it("uses Anthropic protocol on the Kimi Code coding endpoint", () => {
+      const preset = resolveServicePreset("kimicode");
+      expect(preset).toBeDefined();
+      expect(preset!.providerFamily).toBe("anthropic");
+      expect(preset!.api).toBe("anthropic-messages");
+      expect(preset!.baseUrl).toBe("https://api.kimi.com/coding");
+      expect(preset!.modelsBaseUrl).toBe("https://api.kimi.com/coding/v1");
+    });
+
+    it("exposes the Kimi Code model through provider-bank model listing", async () => {
+      const models = await listModelsForService("kimicode");
+      expect(models.map((m) => m.id)).toContain("kimi-for-coding");
+    });
+  });
+
   describe("MiniMax preset", () => {
     it("has correct domestic MiniMax baseUrl (api.minimaxi.com/anthropic)", () => {
       const preset = resolveServicePreset("minimax");
