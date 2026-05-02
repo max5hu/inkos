@@ -288,6 +288,38 @@ describe("chatCompletion via pi-ai", () => {
     vi.unstubAllGlobals();
   });
 
+  it("attaches a proxy dispatcher for custom openai-compatible chat when proxyUrl is configured", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: "proxied" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = makeClient(0.7, {
+      service: "custom",
+      stream: false,
+      proxyUrl: "http://127.0.0.1:9910",
+      _piModel: {
+        ...MOCK_PI_MODEL,
+        provider: "openai",
+        baseUrl: "https://gateway.example/v1",
+      },
+    });
+    const result = await chatCompletion(client, "gpt-5.4", [{ role: "user", content: "nihao" }]);
+
+    expect(result.content).toBe("proxied");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      dispatcher: expect.any(Object),
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it("uses reasoning_content for custom openai-compatible non-stream responses that omit content", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

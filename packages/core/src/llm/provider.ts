@@ -17,6 +17,7 @@ import type {
 import { resolveServicePreset } from "./service-presets.js";
 import { getEndpoint } from "./providers/index.js";
 import { lookupModel } from "./providers/lookup.js";
+import { fetchWithProxy } from "../utils/proxy-fetch.js";
 
 
 // === Streaming Monitor Types ===
@@ -99,6 +100,7 @@ export interface LLMClient {
   readonly configSource?: LLMConfig["configSource"];
   readonly apiFormat: "chat" | "responses";
   readonly stream: boolean;
+  readonly proxyUrl?: string;
   readonly _piModel?: PiModel<PiApi>;
   readonly _apiKey?: string;
   readonly defaults: {
@@ -208,6 +210,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
     configSource: config.configSource,
     apiFormat,
     stream,
+    proxyUrl: config.proxyUrl,
     _piModel: piModel,
     _apiKey: config.apiKey,
     defaults,
@@ -589,7 +592,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
   const system = joinSystemPrompt(messages);
   if (system) payload.system = system;
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/messages`, {
     method: "POST",
     headers: {
       "User-Agent": INKOS_USER_AGENT,
@@ -600,7 +603,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
       ...(client._piModel?.headers ?? {}),
     },
     body: JSON.stringify(payload),
-  });
+  }, client.proxyUrl);
 
   if (!response.ok) {
     throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
@@ -699,11 +702,11 @@ async function chatCompletionViaCustomOpenAICompatible(
     const instructions = joinSystemPrompt(messages);
     if (instructions) payload.instructions = instructions;
 
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/responses`, {
+    const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/responses`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-    });
+    }, client.proxyUrl);
     if (!response.ok) {
       throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
     }
@@ -785,11 +788,11 @@ async function chatCompletionViaCustomOpenAICompatible(
     payload.stream_options = { include_usage: true };
   }
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
-  });
+  }, client.proxyUrl);
   if (!response.ok) {
     const detail = await readErrorResponse(response);
     if (allowSystemRoleFallback && hasSystemMessages(messages) && isSystemRoleUnsupportedErrorText(detail)) {

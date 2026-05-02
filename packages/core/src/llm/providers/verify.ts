@@ -1,5 +1,6 @@
 import { getEndpoint } from "./index.js";
 import { resolveServiceModelsBaseUrl } from "../service-presets.js";
+import { fetchWithProxy } from "../../utils/proxy-fetch.js";
 
 export interface VerifyResult {
   readonly recommendedTransport?: {
@@ -26,6 +27,7 @@ async function probe(
   service: string,
   apiKey: string,
   baseUrl?: string,
+  proxyUrl?: string,
 ): Promise<VerifyResult["probe"]> {
   const provider = getEndpoint(service);
   const probeBaseUrl = baseUrl || provider?.modelsBaseUrl || provider?.baseUrl || resolveServiceModelsBaseUrl(service);
@@ -34,10 +36,10 @@ async function probe(
   }
   try {
     const url = probeBaseUrl.replace(/\/$/, "") + "/models";
-    const res = await fetch(url, {
+    const res = await fetchWithProxy(url, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10_000),
-    });
+    }, proxyUrl);
     if (!res.ok) {
       return { ok: false, models: 0, error: `HTTP ${res.status} ${res.statusText}` };
     }
@@ -61,9 +63,9 @@ async function probe(
 export async function verifyService(
   service: string,
   apiKey: string,
-  opts?: { checkModel?: string; baseUrl?: string },
+  opts?: { checkModel?: string; baseUrl?: string; proxyUrl?: string },
 ): Promise<VerifyResult> {
-  const probeResult = await probe(service, apiKey, opts?.baseUrl);
+  const probeResult = await probe(service, apiKey, opts?.baseUrl, opts?.proxyUrl);
 
   const provider = getEndpoint(service);
   const recommendedTransport = provider?.transportDefaults;
@@ -82,6 +84,7 @@ export async function verifyService(
       model: checkModel,
       apiKey,
       baseUrl: opts?.baseUrl ?? provider?.baseUrl ?? "",
+      proxyUrl: opts?.proxyUrl,
       configSource: "studio",
       stream: false,
     }));

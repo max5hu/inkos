@@ -32,6 +32,7 @@ import {
   listModelsForService,
   getAllEndpoints,
   probeModelsFromUpstream,
+  fetchWithProxy,
   chatCompletion,
   buildExportArtifact,
   GLOBAL_ENV_PATH,
@@ -538,6 +539,7 @@ async function fetchModelsFromServiceBaseUrl(
   serviceId: string,
   baseUrl: string,
   apiKey: string,
+  proxyUrl?: string,
 ): Promise<{ models: Array<{ id: string; name: string }>; error?: string; authFailed?: boolean }> {
   const endpoint = isCustomServiceId(serviceId)
     ? undefined
@@ -547,10 +549,10 @@ async function fetchModelsFromServiceBaseUrl(
     : endpoint?.modelsBaseUrl ?? (endpoint ? baseUrl : resolveServiceModelsBaseUrl(serviceId) ?? baseUrl);
   const modelsUrl = modelsBaseUrl.replace(/\/$/, "") + "/models";
   try {
-    const res = await fetch(modelsUrl, {
+    const res = await fetchWithProxy(modelsUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10_000),
-    });
+    }, proxyUrl);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       return {
@@ -579,6 +581,7 @@ async function probeServiceCapabilities(args: {
   preferredApiFormat?: "chat" | "responses";
   preferredStream?: boolean;
   preferredModel?: string;
+  proxyUrl?: string;
 }): Promise<ServiceProbeResult> {
   const rawConfig = await loadRawConfig(args.root).catch(() => ({} as Record<string, unknown>));
   const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
@@ -590,7 +593,7 @@ async function probeServiceCapabilities(args: {
       : null;
 
   const baseService = isCustomServiceId(args.service) ? "custom" : args.service;
-  const modelsResponse = await fetchModelsFromServiceBaseUrl(baseService, args.baseUrl, args.apiKey);
+  const modelsResponse = await fetchModelsFromServiceBaseUrl(baseService, args.baseUrl, args.apiKey, args.proxyUrl);
   if (modelsResponse.authFailed) {
     return {
       ok: false,
@@ -646,6 +649,7 @@ async function probeServiceCapabilities(args: {
         temperature: 0.7,
         maxTokens: 2048,
         thinkingBudget: 0,
+        proxyUrl: args.proxyUrl,
         apiFormat: plan.apiFormat,
         stream: plan.stream,
       } as ProjectConfig["llm"]);
@@ -1262,6 +1266,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       return c.json({ ok: false, error: `未知服务商: ${service}` }, 400);
     }
 
+    const rawConfig = await loadRawConfig(root).catch(() => ({} as Record<string, unknown>));
+    const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
     const probe = await probeServiceCapabilities({
       root,
       service,
@@ -1269,6 +1275,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       baseUrl: resolvedBaseUrl,
       preferredApiFormat: apiFormat,
       preferredStream: stream,
+      proxyUrl: typeof llm.proxyUrl === "string" ? llm.proxyUrl : undefined,
     });
 
     // B12: 升级响应 shape 为 { probe, chat, ... }，同时保留老字段供 UI 过渡期兼容
@@ -2788,6 +2795,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         preferredApiFormat: currentConfig.llm.apiFormat,
         preferredStream: currentConfig.llm.stream,
         preferredModel: currentConfig.llm.model,
+        proxyUrl: currentConfig.llm.proxyUrl,
       });
       checks.llmConnected = probe.ok;
     } catch { /* ignore */ }

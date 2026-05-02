@@ -20,6 +20,7 @@ export const LLMConfigSchema = z.object({
   baseUrl: z.string().url(),
   apiKey: z.string().default(""),
   model: z.string().min(1),
+  proxyUrl: z.string().url().optional(),
   temperature: z.number().min(0).max(2).default(0.7),
   thinkingBudget: z.number().int().min(0).default(0),
   extra: z.record(z.unknown()).optional(),
