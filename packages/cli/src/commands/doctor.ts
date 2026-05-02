@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { findProjectRoot, log, logError, GLOBAL_ENV_PATH } from "../utils.js";
+import { fetchWithProxy } from "@actalk/inkos-core";
 import {
   ensureNodeRuntimePinFiles,
   evaluateSqliteMemorySupport,
@@ -74,13 +75,14 @@ export function resolveDoctorModelsBaseUrl(
 async function fetchDoctorModels(
   modelsBaseUrl: string,
   apiKey: string,
+  proxyUrl?: string,
 ): Promise<Array<{ id: string; name: string }>> {
   const modelsUrl = modelsBaseUrl.replace(/\/$/, "") + "/models";
   try {
-    const res = await fetch(modelsUrl, {
+    const res = await fetchWithProxy(modelsUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10_000),
-    });
+    }, proxyUrl);
     if (!res.ok) return [];
     const json = await res.json() as { data?: Array<{ id: string }> };
     return (json.data ?? []).map((model) => ({ id: model.id, name: model.id }));
@@ -284,7 +286,7 @@ export const doctorCommand = new Command("doctor")
           resolveServiceModelsBaseUrl,
         );
         const discoveredModels = (llmConfig.apiKey && modelsBaseUrl)
-          ? await fetchDoctorModels(modelsBaseUrl, llmConfig.apiKey)
+          ? await fetchDoctorModels(modelsBaseUrl, llmConfig.apiKey, llmConfig.proxyUrl)
           : [];
         const modelCandidates = (llmConfig.provider === "openai" || discoveredModels.length > 0)
           ? buildDoctorModelCandidates(llmConfig.model, discoveredModels)

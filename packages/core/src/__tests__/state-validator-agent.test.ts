@@ -83,6 +83,51 @@ describe("StateValidatorAgent", () => {
     expect(options?.maxTokens).toBeUndefined();
   });
 
+  it("passes authority truth context into the cross-file validation prompt", async () => {
+    const agent = new StateValidatorAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 8192,
+          thinkingBudget: 0,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: process.cwd(),
+    });
+
+    const chatSpy = vi.spyOn(
+      agent as unknown as { chat: (...args: unknown[]) => Promise<unknown> },
+      "chat",
+    ).mockResolvedValue({ content: "PASS", usage: ZERO_USAGE });
+
+    await agent.validate(
+      "正文确认：第五条规则才是天黑后不准出宿舍。",
+      2,
+      "old state",
+      "new state: 第一条规则已被批注",
+      "old hooks",
+      "new hooks",
+      "zh",
+      {
+        storyFrame: "简介里写过：规则一：天黑后不准出宿舍。",
+        bookRules: "硬规则：规则编号必须以前文正文确立版本为准。",
+        chapterSummaries: "第1章：发现第五条规则的漏洞。",
+      },
+    );
+
+    const messages = chatSpy.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(messages[0]?.content).toContain("truth files");
+    expect(messages[0]?.content).toContain("numbered");
+    expect(messages[1]?.content).toContain("## Authority / Cross-Truth Context");
+    expect(messages[1]?.content).toContain("规则一：天黑后不准出宿舍");
+    expect(messages[1]?.content).toContain("第1章：发现第五条规则的漏洞");
+  });
+
   it("throws when the validator model returns an empty response", async () => {
     const agent = new StateValidatorAgent({
       client: {

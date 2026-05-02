@@ -10,6 +10,12 @@ export interface ValidationResult {
   readonly passed: boolean;
 }
 
+export interface StateValidationAuthorityContext {
+  readonly storyFrame?: string;
+  readonly bookRules?: string;
+  readonly chapterSummaries?: string;
+}
+
 /**
  * Validates Settler output by comparing old and new truth files via LLM.
  * Catches contradictions, missing state changes, and temporal inconsistencies.
@@ -31,6 +37,7 @@ export class StateValidatorAgent extends BaseAgent {
     oldHooks: string,
     newHooks: string,
     language: "zh" | "en" = "zh",
+    authorityContext?: StateValidationAuthorityContext,
   ): Promise<ValidationResult> {
     const stateDiff = this.computeDiff(oldState, newState, "State Card");
     const hooksDiff = this.computeDiff(oldHooks, newHooks, "Hooks Pool");
@@ -53,6 +60,7 @@ Given the chapter text and the CHANGES made to truth files (state card + hooks p
 3. Temporal impossibility — character moves locations without transition, injury heals without time passing
 4. Hook anomaly — a hook disappeared without being marked resolved, or a new hook has no basis in the chapter
 5. Retroactive edit — truth file change implies something happened in a PREVIOUS chapter, not the current one
+6. Cross-truth key-setting conflict — numbered rules, named laws, ranks, identities, locations, or relationship labels in the new truth files contradict the chapter text or the authority context
 
 Output format (simple, NOT JSON):
 - First line: exactly PASS or FAIL (nothing else on this line)
@@ -76,7 +84,11 @@ IMPORTANT: Output FAIL ONLY for hard contradictions — facts that directly conf
 - Hook management differences that don't contradict text
 These should be warnings with PASS, not FAIL.`;
 
+    const authorityBlock = this.buildAuthorityContextBlock(authorityContext);
+
     const userPrompt = `Chapter ${chapterNumber} validation:
+
+${authorityBlock}
 
 ## State Card Changes
 ${stateDiff || "(no changes)"}
@@ -118,6 +130,40 @@ ${chapterContent.slice(0, 6000)}`;
     if (removed.length > 0) parts.push("Removed:\n" + removed.map((l) => `- ${l}`).join("\n"));
     if (added.length > 0) parts.push("Added:\n" + added.map((l) => `+ ${l}`).join("\n"));
     return parts.join("\n");
+  }
+
+  private buildAuthorityContextBlock(authorityContext?: StateValidationAuthorityContext): string {
+    if (!authorityContext) return "## Authority / Cross-Truth Context\n(no authority context provided)";
+
+    const storyFrame = this.truncateHead(authorityContext.storyFrame ?? "", 3500);
+    const bookRules = this.truncateHead(authorityContext.bookRules ?? "", 2000);
+    const chapterSummaries = this.truncateTail(authorityContext.chapterSummaries ?? "", 3500);
+
+    return [
+      "## Authority / Cross-Truth Context",
+      "Authority priority: current chapter text > runtime truth files/current summaries > story_frame/book_rules > legacy story_bible intro or marketing-style prose. If the current chapter establishes a numbered/name mapping, new truth files must follow that mapping instead of preserving an older intro-only version.",
+      "",
+      "### story_frame / legacy story_bible excerpt",
+      storyFrame || "(empty)",
+      "",
+      "### book_rules excerpt",
+      bookRules || "(empty)",
+      "",
+      "### recent chapter_summaries excerpt",
+      chapterSummaries || "(empty)",
+    ].join("\n");
+  }
+
+  private truncateHead(text: string, maxChars: number): string {
+    const trimmed = text.trim();
+    if (trimmed.length <= maxChars) return trimmed;
+    return `${trimmed.slice(0, maxChars).trimEnd()}\n\n[...truncated...]`;
+  }
+
+  private truncateTail(text: string, maxChars: number): string {
+    const trimmed = text.trim();
+    if (trimmed.length <= maxChars) return trimmed;
+    return `[...truncated...]\n\n${trimmed.slice(-maxChars).trimStart()}`;
   }
 
   private parseResult(content: string): ValidationResult {

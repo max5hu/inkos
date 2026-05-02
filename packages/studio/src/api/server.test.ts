@@ -230,6 +230,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     listModelsForService: listModelsForServiceMock,
     getAllEndpoints: getAllEndpointsMock,
     probeModelsFromUpstream: probeModelsFromUpstreamMock,
+    fetchWithProxy: vi.fn((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init)),
     GLOBAL_ENV_PATH: join(tmpdir(), "inkos-global.env"),
   };
 });
@@ -951,6 +952,30 @@ describe("createStudioServer daemon lifecycle", () => {
       { service: "moonshot", temperature: 1 },
     ]);
     expect(raw.llm.defaultModel).toBe("kimi-k2.5");
+  });
+
+  it("returns the saved default service and model for Studio chat selection", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        services: [
+          { service: "google", temperature: 1 },
+          { service: "moonshot", temperature: 0.7 },
+        ],
+        service: "moonshot",
+        defaultModel: "kimi-k2.5",
+      },
+    }, null, 2), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/services/config");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      service: "moonshot",
+      defaultModel: "kimi-k2.5",
+    });
   });
 
   it("rejects switching Studio runtime to env config source", async () => {
@@ -1744,12 +1769,30 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("routes /api/agent through runAgentSession and returns response + sessionId", async () => {
-    runAgentSessionMock.mockResolvedValueOnce({
-      responseText: "Completed write_next for demo-book.",
-      messages: [
-        { role: "user", content: "continue" },
-        { role: "assistant", content: "Completed write_next for demo-book." },
-      ],
+    runAgentSessionMock.mockImplementationOnce(async (config: { onEvent?: (event: unknown) => void }) => {
+      config.onEvent?.({
+        type: "tool_execution_start",
+        toolName: "sub_agent",
+        toolCallId: "tool-writer-1",
+        args: { agent: "writer" },
+      });
+      config.onEvent?.({
+        type: "tool_execution_end",
+        toolName: "sub_agent",
+        toolCallId: "tool-writer-1",
+        isError: false,
+        result: {
+          content: [{ type: "text", text: "Chapter written for demo-book. Word count: 1800." }],
+          details: { kind: "chapter_written", bookId: "demo-book", chapterNumber: 4 },
+        },
+      });
+      return {
+        responseText: "Completed write_next for demo-book.",
+        messages: [
+          { role: "user", content: "continue" },
+          { role: "assistant", content: "Completed write_next for demo-book." },
+        ],
+      };
     });
 
     const { createStudioServer } = await import("./server.js");
@@ -1775,6 +1818,33 @@ describe("createStudioServer daemon lifecycle", () => {
       }),
       "continue",
     );
+  });
+
+  it("rejects text-only write-next agent responses that never executed the writer tool", async () => {
+    runAgentSessionMock.mockResolvedValueOnce({
+      responseText: "已为 demo-book 完成下一章写作。",
+      messages: [
+        { role: "user", content: "继续" },
+        { role: "assistant", content: "已为 demo-book 完成下一章写作。" },
+      ],
+    });
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction: "继续", activeBookId: "demo-book", sessionId: "agent-session-1" }),
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "AGENT_ACTION_NOT_EXECUTED",
+      },
+      response: expect.stringContaining("没有实际调用写作工具"),
+    });
   });
 
   it("rejects unsafe activeBookId in the Studio agent API", async () => {

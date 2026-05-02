@@ -1,5 +1,5 @@
 import type { AuditIssue, AuditResult } from "../agents/continuity.js";
-import type { ValidationResult, StateValidatorAgent } from "../agents/state-validator.js";
+import type { StateValidationAuthorityContext, ValidationResult, StateValidatorAgent } from "../agents/state-validator.js";
 import type { WriteChapterOutput, WriterAgent } from "../agents/writer.js";
 import type { BookConfig } from "../models/book.js";
 import type { ContextPackage, RuleStack } from "../models/input-governance.js";
@@ -25,6 +25,7 @@ export async function validateChapterTruthPersistence(params: {
     readonly oldHooks: string;
     readonly oldLedger: string;
   };
+  readonly authorityContext?: StateValidationAuthorityContext;
   readonly reducedControlInput?: {
     chapterIntent: string;
     contextPackage: ContextPackage;
@@ -55,6 +56,7 @@ export async function validateChapterTruthPersistence(params: {
       params.previousTruth.oldHooks,
       persistenceOutput.updatedHooks,
       params.language,
+      params.authorityContext,
     );
   } catch (error) {
     params.logger?.warn(`State validation error for chapter ${params.chapterNumber}: ${String(error)}`);

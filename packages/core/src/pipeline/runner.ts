@@ -65,11 +65,165 @@ function isSequenceLevelCategory(category: string): boolean {
   return SEQUENCE_LEVEL_CATEGORIES.has(category);
 }
 
+interface ImportFoundationSourceOptions {
+  readonly maxFullTextChars?: number;
+  readonly chapterExcerptChars?: number;
+  readonly titleCatalogChars?: number;
+  readonly edgeChapterCount?: number;
+  readonly middleAnchorCount?: number;
+}
+
+const DEFAULT_IMPORT_FOUNDATION_MAX_FULL_TEXT_CHARS = 80_000;
+const DEFAULT_IMPORT_CHAPTER_EXCERPT_CHARS = 6_000;
+const DEFAULT_IMPORT_TITLE_CATALOG_CHARS = 24_000;
+const DEFAULT_IMPORT_EDGE_CHAPTER_COUNT = 4;
+const DEFAULT_IMPORT_MIDDLE_ANCHOR_COUNT = 8;
+
+function formatImportedChapter(
+  chapter: { readonly title: string; readonly content: string },
+  index: number,
+  language: LengthLanguage,
+  content = chapter.content,
+): string {
+  return language === "en"
+    ? `Chapter ${index + 1}: ${chapter.title}\n\n${content}`
+    : `第${index + 1}章 ${chapter.title}\n\n${content}`;
+}
+
+function estimateImportFullTextLength(
+  chapters: ReadonlyArray<{ readonly title: string; readonly content: string }>,
+): number {
+  return chapters.reduce((total, chapter) => total + chapter.title.length + chapter.content.length + 24, 0);
+}
+
+function excerptHeadTail(text: string, maxChars: number, language: LengthLanguage): string {
+  const clean = text.trim();
+  if (clean.length <= maxChars) return clean;
+  const headChars = Math.max(200, Math.floor(maxChars * 0.6));
+  const tailChars = Math.max(200, maxChars - headChars);
+  const omitted = clean.length - headChars - tailChars;
+  const marker = language === "en"
+    ? `\n\n[... ${omitted} chars omitted for import-context budget ...]\n\n`
+    : `\n\n【中间省略 ${omitted} 字，用于控制导入上下文预算】\n\n`;
+  return `${clean.slice(0, headChars).trimEnd()}${marker}${clean.slice(-tailChars).trimStart()}`;
+}
+
+function pickImportAnchorIndexes(
+  chapterCount: number,
+  edgeChapterCount: number,
+  middleAnchorCount: number,
+): ReadonlyArray<number> {
+  const selected = new Set<number>();
+  for (let i = 0; i < Math.min(edgeChapterCount, chapterCount); i++) selected.add(i);
+  for (let i = Math.max(0, chapterCount - edgeChapterCount); i < chapterCount; i++) selected.add(i);
+
+  const middleStart = Math.min(edgeChapterCount, chapterCount);
+  const middleEnd = Math.max(middleStart, chapterCount - edgeChapterCount);
+  const middleSize = middleEnd - middleStart;
+  const anchors = Math.min(middleAnchorCount, middleSize);
+  for (let i = 0; i < anchors; i++) {
+    const offset = Math.floor(((i + 1) * middleSize) / (anchors + 1));
+    selected.add(Math.min(chapterCount - 1, middleStart + offset));
+  }
+
+  return [...selected].sort((a, b) => a - b);
+}
+
+function buildTitleCatalog(
+  chapters: ReadonlyArray<{ readonly title: string; readonly content: string }>,
+  language: LengthLanguage,
+  maxChars: number,
+): string {
+  const lines = chapters.map((chapter, index) =>
+    language === "en"
+      ? `- Chapter ${index + 1}: ${chapter.title} (${chapter.content.length} chars)`
+      : `- 第${index + 1}章：${chapter.title}（${chapter.content.length}字）`,
+  );
+  const joined = lines.join("\n");
+  if (joined.length <= maxChars) return joined;
+
+  const headBudget = Math.floor(maxChars * 0.55);
+  const tailBudget = maxChars - headBudget;
+  const head: string[] = [];
+  const tail: string[] = [];
+  let headChars = 0;
+  let tailChars = 0;
+  for (const line of lines) {
+    if (headChars + line.length + 1 > headBudget) break;
+    head.push(line);
+    headChars += line.length + 1;
+  }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!;
+    if (tailChars + line.length + 1 > tailBudget) break;
+    tail.unshift(line);
+    tailChars += line.length + 1;
+  }
+  const omitted = lines.length - head.length - tail.length;
+  const marker = language === "en"
+    ? `- ... ${omitted} chapter titles omitted ...`
+    : `- ……中间 ${omitted} 个章节标题省略……`;
+  return [...head, marker, ...tail].join("\n");
+}
+
+export function buildImportFoundationSource(
+  chapters: ReadonlyArray<{ readonly title: string; readonly content: string }>,
+  language: LengthLanguage,
+  options: ImportFoundationSourceOptions = {},
+): string {
+  const maxFullTextChars = options.maxFullTextChars ?? DEFAULT_IMPORT_FOUNDATION_MAX_FULL_TEXT_CHARS;
+  const chapterExcerptChars = options.chapterExcerptChars ?? DEFAULT_IMPORT_CHAPTER_EXCERPT_CHARS;
+  const titleCatalogChars = options.titleCatalogChars ?? DEFAULT_IMPORT_TITLE_CATALOG_CHARS;
+  const edgeChapterCount = options.edgeChapterCount ?? DEFAULT_IMPORT_EDGE_CHAPTER_COUNT;
+  const middleAnchorCount = options.middleAnchorCount ?? DEFAULT_IMPORT_MIDDLE_ANCHOR_COUNT;
+
+  if (estimateImportFullTextLength(chapters) <= maxFullTextChars) {
+    return chapters.map((chapter, index) => formatImportedChapter(chapter, index, language)).join("\n\n---\n\n");
+  }
+
+  const anchorIndexes = pickImportAnchorIndexes(chapters.length, edgeChapterCount, middleAnchorCount);
+  const header = language === "en"
+    ? [
+        "## Import foundation source package",
+        "",
+        `The imported book has ${chapters.length} chapters. To avoid overflowing the LLM context, this package keeps the opening chapters, ending/continuation point, selected middle anchors, and a capped title catalog. Full chapters will still be replayed sequentially after foundation generation to rebuild truth files.`,
+      ].join("\n")
+    : [
+        "## 导入基础设定压缩资料包",
+        "",
+        `本次导入共 ${chapters.length} 章。为避免超出 LLM 上下文，这里保留开篇、结尾续写点、少量中段锚点和标题目录；完整章节将在后续顺序回放中逐章分析并沉淀 truth files。`,
+      ].join("\n");
+  const catalogTitle = language === "en" ? "## Capped chapter title catalog" : "## 章节标题目录（截断）";
+  const anchorsTitle = language === "en" ? "## Source excerpts for architecture" : "## 用于反推基础设定的正文摘录";
+  const anchorText = anchorIndexes
+    .map((index) => {
+      const chapter = chapters[index]!;
+      return formatImportedChapter(
+        chapter,
+        index,
+        language,
+        excerptHeadTail(chapter.content, chapterExcerptChars, language),
+      );
+    })
+    .join("\n\n---\n\n");
+
+  return [
+    header,
+    "",
+    catalogTitle,
+    buildTitleCatalog(chapters, language, titleCatalogChars),
+    "",
+    anchorsTitle,
+    anchorText,
+  ].join("\n");
+}
+
 export interface PipelineConfig {
   readonly client: LLMClient;
   readonly model: string;
   readonly projectRoot: string;
   readonly defaultLLMConfig?: LLMConfig;
+  readonly foundationReviewRetries?: number;
   readonly notifyChannels?: ReadonlyArray<NotifyChannel>;
   readonly radarSources?: ReadonlyArray<RadarSource>;
   readonly externalContext?: string;
@@ -269,7 +423,7 @@ export class PipelineRunner {
     readonly stageLanguage: LengthLanguage;
     readonly maxRetries?: number;
   }): Promise<ArchitectOutput> {
-    const maxRetries = params.maxRetries ?? 2;
+    const maxRetries = params.maxRetries ?? this.config.foundationReviewRetries ?? 2;
     let foundation = await params.generate();
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -1581,10 +1735,13 @@ export class PipelineRunner {
     // 4.1 Validate settler output before writing
     this.logStage(stageLanguage, { zh: "校验真相文件变更", en: "validating truth file updates" });
     const storyDir = join(bookDir, "story");
-    const [oldState, oldHooks, oldLedger] = await Promise.all([
+    const [oldState, oldHooks, oldLedger, authorityStoryFrame, authorityBookRules, authorityChapterSummaries] = await Promise.all([
       readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
       readFile(join(storyDir, "pending_hooks.md"), "utf-8").catch(() => ""),
       readFile(join(storyDir, "particle_ledger.md"), "utf-8").catch(() => ""),
+      readStoryFrame(bookDir).catch(() => ""),
+      readFile(join(storyDir, "book_rules.md"), "utf-8").catch(() => ""),
+      readFile(join(storyDir, "chapter_summaries.md"), "utf-8").catch(() => ""),
     ]);
     const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
     const truthValidation = await validateChapterTruthPersistence({
@@ -1601,6 +1758,11 @@ export class PipelineRunner {
         oldState,
         oldHooks,
         oldLedger,
+      },
+      authorityContext: {
+        storyFrame: authorityStoryFrame,
+        bookRules: authorityBookRules,
+        chapterSummaries: authorityChapterSummaries,
       },
       reducedControlInput,
       language: pipelineLang,
@@ -2001,8 +2163,9 @@ export class PipelineRunner {
    * Also saves the statistical style_profile.json.
    */
   async generateStyleGuide(bookId: string, referenceText: string, sourceName?: string): Promise<string> {
-    if (referenceText.length < 500) {
-      throw new Error(`Reference text too short (${referenceText.length} chars, minimum 500). Provide at least 2000 chars for reliable style extraction.`);
+    const sample = referenceText.trim();
+    if (!sample) {
+      throw new Error("Reference text is required for style extraction.");
     }
 
     const { analyzeStyle } = await import("../agents/style-analyzer.js");
@@ -2011,14 +2174,28 @@ export class PipelineRunner {
     await mkdir(storyDir, { recursive: true });
 
     // Statistical fingerprint
-    const profile = analyzeStyle(referenceText, sourceName);
+    const profile = analyzeStyle(sample, sourceName);
     await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
 
-    // LLM qualitative extraction
-    const response = await chatCompletion(this.config.client, this.config.model, [
-      {
-        role: "system",
-        content: `你是一位文学风格分析专家。分析参考文本的写作风格，提取可供模仿的定性特征。
+    const book = await this.state.loadBookConfig(bookId);
+    const { profile: gp } = await this.loadGenreProfile(book.genre);
+    const lang = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
+
+    let qualitativeGuide: string;
+    if (sample.length < 500) {
+      qualitativeGuide = this.buildDeterministicStyleGuide(profile, {
+        language: lang,
+        reason: lang === "en"
+          ? `The sample is short (${sample.length} chars), so this guide uses the statistical fingerprint instead of LLM qualitative extraction.`
+          : `样本文本较短（${sample.length}字），本次先使用统计指纹生成文风指南，不强行调用 LLM 做定性拆解。`,
+      });
+    } else {
+      try {
+        // LLM qualitative extraction
+        const response = await chatCompletion(this.config.client, this.config.model, [
+          {
+            role: "system",
+            content: `你是一位文学风格分析专家。分析参考文本的写作风格，提取可供模仿的定性特征。
 
 输出格式（Markdown）：
 ## 叙事声音与语气
@@ -2046,20 +2223,89 @@ export class PipelineRunner {
 （任何值得模仿的个人写作习惯）
 
 分析必须基于原文实际特征，不要泛泛而谈。每个部分用1-2个原文例句佐证。`,
-      },
-      {
-        role: "user",
-        content: `分析以下参考文本的写作风格：\n\n${referenceText.slice(0, 20000)}`,
-      },
-    ], { temperature: 0.3 });
+          },
+          {
+            role: "user",
+            content: `分析以下参考文本的写作风格：\n\n${sample.slice(0, 20000)}`,
+          },
+        ], { temperature: 0.3 });
+        qualitativeGuide = response.content.trim()
+          ? response.content
+          : this.buildDeterministicStyleGuide(profile, {
+              language: lang,
+              reason: lang === "en"
+                ? "The LLM returned empty style analysis; using the statistical fingerprint fallback."
+                : "LLM 未返回有效文风分析，本次使用统计指纹兜底生成文风指南。",
+            });
+      } catch (error) {
+        qualitativeGuide = this.buildDeterministicStyleGuide(profile, {
+          language: lang,
+          reason: lang === "en"
+            ? `LLM qualitative extraction failed: ${error instanceof Error ? error.message : String(error)}. Using the statistical fingerprint fallback.`
+            : `LLM 定性拆解失败：${error instanceof Error ? error.message : String(error)}。本次使用统计指纹兜底生成文风指南。`,
+        });
+      }
+    }
 
-    const book = await this.state.loadBookConfig(bookId);
-    const { profile: gp } = await this.loadGenreProfile(book.genre);
-    const lang = (book.language ?? gp.language) === "en" ? "en" as const : "zh" as const;
     const craftMethodology = buildWritingMethodologySection(lang);
-    const fullStyleGuide = `${response.content}\n\n${craftMethodology}`;
+    const fullStyleGuide = `${qualitativeGuide}\n\n${craftMethodology}`;
     await writeFile(join(storyDir, "style_guide.md"), fullStyleGuide, "utf-8");
     return fullStyleGuide;
+  }
+
+  private buildDeterministicStyleGuide(
+    profile: {
+      readonly avgSentenceLength: number;
+      readonly sentenceLengthStdDev: number;
+      readonly avgParagraphLength: number;
+      readonly vocabularyDiversity: number;
+      readonly topPatterns: ReadonlyArray<string>;
+      readonly rhetoricalFeatures: ReadonlyArray<string>;
+      readonly sourceName?: string;
+    },
+    options: { readonly language: "zh" | "en"; readonly reason: string },
+  ): string {
+    if (options.language === "en") {
+      return [
+        "# Style Guide",
+        "",
+        `> ${options.reason}`,
+        "",
+        "## Statistical Fingerprint",
+        `- Source: ${profile.sourceName ?? "unknown"}`,
+        `- Average sentence length: ${profile.avgSentenceLength}`,
+        `- Sentence length variance: ${profile.sentenceLengthStdDev}`,
+        `- Average paragraph length: ${profile.avgParagraphLength}`,
+        `- Vocabulary diversity: ${Math.round(profile.vocabularyDiversity * 100)}%`,
+        profile.topPatterns.length > 0 ? `- Repeated openings: ${profile.topPatterns.join(", ")}` : "- Repeated openings: none obvious in this sample",
+        profile.rhetoricalFeatures.length > 0 ? `- Rhetorical features: ${profile.rhetoricalFeatures.join(", ")}` : "- Rhetorical features: none obvious in this sample",
+        "",
+        "## How To Use",
+        "- Treat this as a lightweight style fingerprint, not a full imitation bible.",
+        "- Keep sentence and paragraph rhythm close to the sample when drafting.",
+        "- If this guide feels too thin, import a longer excerpt later; the file will be replaced.",
+      ].join("\n");
+    }
+
+    return [
+      "# 文风指南",
+      "",
+      `> ${options.reason}`,
+      "",
+      "## 统计风格指纹",
+      `- 来源：${profile.sourceName ?? "unknown"}`,
+      `- 平均句长：${profile.avgSentenceLength}`,
+      `- 句长波动：${profile.sentenceLengthStdDev}`,
+      `- 平均段落长度：${profile.avgParagraphLength}`,
+      `- 词汇多样性：${Math.round(profile.vocabularyDiversity * 100)}%`,
+      profile.topPatterns.length > 0 ? `- 高频句首/模式：${profile.topPatterns.join("、")}` : "- 高频句首/模式：样本内不明显",
+      profile.rhetoricalFeatures.length > 0 ? `- 修辞特征：${profile.rhetoricalFeatures.join("、")}` : "- 修辞特征：样本内不明显",
+      "",
+      "## 使用方式",
+      "- 这是一份轻量文风指纹，不是完整仿写圣经。",
+      "- 后续写作优先参考句长、段落长度、节奏波动和可见修辞。",
+      "- 如果想得到更稳定的定性拆解，后续可以导入更长片段覆盖本文件。",
+    ].join("\n");
   }
 
   /**
@@ -2260,23 +2506,19 @@ ${matrix}`,
           zh: `步骤 1：从 ${input.chapters.length} 章生成基础设定...`,
           en: `Step 1: Generating foundation from ${input.chapters.length} chapters...`,
         }));
-        const allText = input.chapters.map((c, i) =>
-          resolvedLanguage === "en"
-            ? `Chapter ${i + 1}: ${c.title}\n\n${c.content}`
-            : `第${i + 1}章 ${c.title}\n\n${c.content}`,
-        ).join("\n\n---\n\n");
+        const foundationSource = buildImportFoundationSource(input.chapters, resolvedLanguage);
 
         const architect = new ArchitectAgent(this.agentCtxFor("architect", input.bookId));
         const isSeries = input.importMode === "series";
         const foundation = isSeries
           ? await this.generateAndReviewFoundation({
-              generate: (reviewFeedback) => architect.generateFoundationFromImport(book, allText, undefined, reviewFeedback, { importMode: "series" }),
+              generate: (reviewFeedback) => architect.generateFoundationFromImport(book, foundationSource, undefined, reviewFeedback, { importMode: "series" }),
               reviewer: new FoundationReviewerAgent(this.agentCtxFor("foundation-reviewer", input.bookId)),
               mode: "series",
               language: resolvedLanguage === "en" ? "en" : "zh",
               stageLanguage: resolvedLanguage,
             })
-          : await architect.generateFoundationFromImport(book, allText);
+          : await architect.generateFoundationFromImport(book, foundationSource);
         await architect.writeFoundationFiles(
           bookDir,
           foundation,
@@ -2288,12 +2530,12 @@ ${matrix}`,
         await this.state.snapshotState(input.bookId, 0);
 
         // Generate style guide from imported chapters
-        if (allText.length >= 500) {
+        if (foundationSource.length >= 500) {
           log?.info(this.localize(resolvedLanguage, {
             zh: "提取原文风格指纹...",
             en: "Extracting source style fingerprint...",
           }));
-          await this.tryGenerateStyleGuide(input.bookId, allText, book.title, resolvedLanguage);
+          await this.tryGenerateStyleGuide(input.bookId, foundationSource, book.title, resolvedLanguage);
         }
 
         log?.info(this.localize(resolvedLanguage, {

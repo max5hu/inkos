@@ -17,6 +17,7 @@ import type {
 import { resolveServicePreset } from "./service-presets.js";
 import { getEndpoint } from "./providers/index.js";
 import { lookupModel } from "./providers/lookup.js";
+import { fetchWithProxy } from "../utils/proxy-fetch.js";
 
 
 // === Streaming Monitor Types ===
@@ -32,6 +33,7 @@ export type OnStreamProgress = (progress: StreamProgress) => void;
 
 const INKOS_USER_AGENT = "InkOS/1.3.5";
 const UNKNOWN_MODEL_FALLBACK_MAX_TOKENS = 8192 * 3;
+const TRANSIENT_LLM_RETRIES = 2;
 
 function mergeUserAgent(headers?: Record<string, string>): Record<string, string> {
   return { "User-Agent": INKOS_USER_AGENT, ...(headers ?? {}) };
@@ -99,6 +101,7 @@ export interface LLMClient {
   readonly configSource?: LLMConfig["configSource"];
   readonly apiFormat: "chat" | "responses";
   readonly stream: boolean;
+  readonly proxyUrl?: string;
   readonly _piModel?: PiModel<PiApi>;
   readonly _apiKey?: string;
   readonly defaults: {
@@ -208,6 +211,7 @@ export function createLLMClient(config: LLMConfig): LLMClient {
     configSource: config.configSource,
     apiFormat,
     stream,
+    proxyUrl: config.proxyUrl,
     _piModel: piModel,
     _apiKey: config.apiKey,
     defaults,
@@ -363,7 +367,17 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
       `API 返回 429 (请求过多)。请稍后重试，或检查 API 配额。${ctxLine}`,
     );
   }
-  if (msg.includes("Connection error") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("fetch failed")) {
+  if (
+    msg.includes("Connection error")
+    || msg.includes("ECONNREFUSED")
+    || msg.includes("ENOTFOUND")
+    || msg.includes("fetch failed")
+    || msg.includes("terminated")
+    || msg.includes("UND_ERR_SOCKET")
+    || msg.includes("ECONNRESET")
+    || msg.includes("ETIMEDOUT")
+    || msg.includes("EPIPE")
+  ) {
     return new Error(
       `无法连接到 API 服务。可能原因：\n` +
       `  1. baseUrl 地址不正确（当前：${context?.baseUrl ?? "未知"}）\n` +
@@ -394,6 +408,61 @@ function wrapLLMError(error: unknown, context?: { readonly baseUrl?: string; rea
     );
   }
   return error instanceof Error ? error : new Error(msg);
+}
+
+function collectErrorText(error: unknown, depth = 0): string {
+  if (depth > 4 || error === null || error === undefined) return "";
+  const parts = [String(error)];
+  if (error instanceof Error) {
+    parts.push(error.name, error.message);
+    const cause = (error as Error & { cause?: unknown }).cause;
+    if (cause) parts.push(collectErrorText(cause, depth + 1));
+  } else if (typeof error === "object") {
+    const err = error as { code?: unknown; cause?: unknown; message?: unknown; name?: unknown };
+    if (err.name) parts.push(String(err.name));
+    if (err.message) parts.push(String(err.message));
+    if (err.code) parts.push(String(err.code));
+    if (err.cause) parts.push(collectErrorText(err.cause, depth + 1));
+  }
+  return parts.join("\n");
+}
+
+function isTransientLLMTransportError(error: unknown): boolean {
+  const text = collectErrorText(error);
+  return [
+    "terminated",
+    "UND_ERR_SOCKET",
+    "ECONNRESET",
+    "ETIMEDOUT",
+    "EPIPE",
+    "socket hang up",
+    "other side closed",
+    "network socket disconnected",
+  ].some((needle) => text.includes(needle));
+}
+
+async function withTransientLLMRetry<T>(
+  run: () => Promise<T>,
+  options?: { readonly enabled?: boolean },
+): Promise<T> {
+  const enabled = options?.enabled ?? true;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= TRANSIENT_LLM_RETRIES; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      lastError = error;
+      if (
+        !enabled
+        || attempt >= TRANSIENT_LLM_RETRIES
+        || error instanceof PartialResponseError
+        || !isTransientLLMTransportError(error)
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
 }
 
 function shouldUseNativeCustomTransport(client: LLMClient): boolean {
@@ -589,7 +658,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
   const system = joinSystemPrompt(messages);
   if (system) payload.system = system;
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/messages`, {
     method: "POST",
     headers: {
       "User-Agent": INKOS_USER_AGENT,
@@ -600,7 +669,7 @@ async function chatCompletionViaCustomAnthropicCompatible(
       ...(client._piModel?.headers ?? {}),
     },
     body: JSON.stringify(payload),
-  });
+  }, client.proxyUrl);
 
   if (!response.ok) {
     throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
@@ -699,11 +768,11 @@ async function chatCompletionViaCustomOpenAICompatible(
     const instructions = joinSystemPrompt(messages);
     if (instructions) payload.instructions = instructions;
 
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/responses`, {
+    const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/responses`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-    });
+    }, client.proxyUrl);
     if (!response.ok) {
       throw wrapLLMError(new Error(await readErrorResponse(response)), errorCtx);
     }
@@ -785,11 +854,11 @@ async function chatCompletionViaCustomOpenAICompatible(
     payload.stream_options = { include_usage: true };
   }
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetchWithProxy(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
-  });
+  }, client.proxyUrl);
   if (!response.ok) {
     const detail = await readErrorResponse(response);
     if (allowSystemRoleFallback && hasSystemMessages(messages) && isSystemRoleUnsupportedErrorText(detail)) {
@@ -901,10 +970,16 @@ export async function chatCompletion(
   const errorCtx = { baseUrl: client._piModel?.baseUrl ?? "(unknown)", model };
 
   try {
-    if (shouldUseNativeCustomTransport(client)) {
-      return await chatCompletionViaCustomOpenAICompatible(client, model, messages, resolved, onStreamProgress, onTextDelta);
-    }
-    return await chatCompletionViaPiAi(client, model, messages, resolved, onStreamProgress, onTextDelta);
+    return await withTransientLLMRetry(
+      async () => {
+        if (shouldUseNativeCustomTransport(client)) {
+          return chatCompletionViaCustomOpenAICompatible(client, model, messages, resolved, onStreamProgress, onTextDelta);
+        }
+        return chatCompletionViaPiAi(client, model, messages, resolved, onStreamProgress, onTextDelta);
+      },
+      // Retrying after UI text deltas have been emitted can duplicate visible text.
+      { enabled: !onTextDelta },
+    );
   } catch (error) {
     // Stream interrupted but partial content is usable — return truncated response
     if (error instanceof PartialResponseError) {

@@ -9,6 +9,11 @@ export interface ChatPageModelGroup {
   readonly models: ReadonlyArray<ChatPageModelInfo>;
 }
 
+export interface ChatPageModelPreference {
+  readonly model?: string | null;
+  readonly service?: string | null;
+}
+
 const BOOK_CREATE_SESSION_KEY = "inkos.book-create.session-id";
 
 export function getBookCreateSessionId(): string | null {
@@ -45,6 +50,7 @@ export function pickModelSelection(
   groupedModels: ReadonlyArray<ChatPageModelGroup>,
   selectedModel: string | null,
   selectedService: string | null,
+  preference?: ChatPageModelPreference | null,
 ): { model: string; service: string } | null {
   const selectedStillAvailable = selectedModel && selectedService
     ? groupedModels.some((group) =>
@@ -53,6 +59,29 @@ export function pickModelSelection(
       )
     : false;
   if (selectedStillAvailable) return null;
+
+  const preferredService = preference?.service?.trim();
+  const preferredModel = preference?.model?.trim();
+  if (preferredService) {
+    const preferredGroup = groupedModels.find((group) => group.service === preferredService);
+    const exactModel = preferredModel
+      ? preferredGroup?.models.find((model) => model.id === preferredModel)
+      : undefined;
+    if (preferredGroup && exactModel) {
+      return { model: exactModel.id, service: preferredGroup.service };
+    }
+    const firstPreferredModel = preferredGroup?.models[0];
+    if (preferredGroup && firstPreferredModel) {
+      return { model: firstPreferredModel.id, service: preferredGroup.service };
+    }
+  }
+
+  if (preferredModel) {
+    for (const group of groupedModels) {
+      const exactModel = group.models.find((model) => model.id === preferredModel);
+      if (exactModel) return { model: exactModel.id, service: group.service };
+    }
+  }
 
   const firstGroup = groupedModels.find((group) => group.models.length > 0);
   const firstModel = firstGroup?.models[0];

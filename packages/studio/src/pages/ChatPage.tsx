@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import type { SSEMessage } from "../hooks/use-sse";
+import { fetchJson } from "../hooks/use-api";
 import { chatSelectors, useChatStore } from "../store/chat";
 import { useServiceStore } from "../store/service";
 import {
@@ -31,6 +32,7 @@ import {
   MessageContent,
 } from "../components/ai-elements/message";
 import {
+  type ChatPageModelPreference,
   filterModelGroups,
   getBookCreateSessionId,
   pickModelSelection,
@@ -51,6 +53,11 @@ export interface ChatPageProps {
   readonly theme: Theme;
   readonly t: TFunction;
   readonly sse: { messages: ReadonlyArray<SSEMessage>; connected: boolean };
+}
+
+interface ServiceConfigPayload {
+  readonly service?: string | null;
+  readonly defaultModel?: string | null;
 }
 
 // -- Component --
@@ -96,12 +103,36 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
   const fetchServices = useServiceStore((s) => s.fetchServices);
   const fetchBankModels = useServiceStore((s) => s.fetchBankModels);
   const fetchCustomModels = useServiceStore((s) => s.fetchCustomModels);
+  const [configuredModelSelection, setConfiguredModelSelection] = useState<ChatPageModelPreference | null>(null);
+  const [serviceConfigLoaded, setServiceConfigLoaded] = useState(false);
 
   useEffect(() => { void fetchServices(); }, [fetchServices]);
   useEffect(() => {
     void fetchBankModels();
     void fetchCustomModels();
   }, [fetchBankModels, fetchCustomModels]);
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetchJson<ServiceConfigPayload>("/services/config")
+      .then((payload) => {
+        if (cancelled) return;
+        setConfiguredModelSelection({
+          service: payload.service ?? null,
+          model: payload.defaultModel ?? null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setConfiguredModelSelection(null);
+      })
+      .finally(() => {
+        if (!cancelled) setServiceConfigLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const modelPickerStatus = useMemo(() => {
     if (servicesLoading || services.length === 0) return "loading" as const;
@@ -121,13 +152,27 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
       .map((s) => ({ service: s.service, label: s.label, models: modelsByService[s.service]! }));
   }, [services, modelsByService]);
 
-  // Auto-select first model when models load, and replace stale selections after lists refresh.
+  const selectedModelLabel = useMemo(() => {
+    if (!selectedModel) return "选择模型";
+    const group = groupedModels.find((item) => item.service === selectedService);
+    const model = group?.models.find((item) => item.id === selectedModel);
+    const modelLabel = model?.name ?? selectedModel;
+    return group ? `${group.label} · ${modelLabel}` : modelLabel;
+  }, [groupedModels, selectedModel, selectedService]);
+
+  // Auto-select from saved service config first, then fall back to the first available model.
   useEffect(() => {
-    const nextSelection = pickModelSelection(groupedModels, selectedModel, selectedService);
+    if (!serviceConfigLoaded) return;
+    const nextSelection = pickModelSelection(
+      groupedModels,
+      selectedModel,
+      selectedService,
+      configuredModelSelection,
+    );
     if (nextSelection) {
       setSelectedModel(nextSelection.model, nextSelection.service);
     }
-  }, [groupedModels, selectedModel, selectedService, setSelectedModel]);
+  }, [configuredModelSelection, groupedModels, selectedModel, selectedService, serviceConfigLoaded, setSelectedModel]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -356,8 +401,8 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
                 ) : modelPickerStatus === "ready" ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-muted text-sm transition-colors cursor-pointer">
-                      <span className="font-medium text-xs truncate max-w-[140px]">
-                        {selectedModel ?? "选择模型"}
+                      <span className="font-medium text-xs truncate max-w-[220px]">
+                        {selectedModelLabel}
                       </span>
                       <ChevronDown size={14} className="text-muted-foreground" />
                     </DropdownMenuTrigger>

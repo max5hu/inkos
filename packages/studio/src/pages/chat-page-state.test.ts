@@ -142,6 +142,33 @@ describe("pickModelSelection", () => {
     });
   });
 
+  it("prefers the configured service and model when there is no current selection", () => {
+    expect(pickModelSelection(grouped, null, null, {
+      service: "moonshot",
+      model: "kimi-k2.5",
+    })).toEqual({
+      model: "kimi-k2.5",
+      service: "moonshot",
+    });
+  });
+
+  it("prefers the configured service even when its configured model is stale", () => {
+    expect(pickModelSelection(grouped, null, null, {
+      service: "moonshot",
+      model: "kimi-k3",
+    })).toEqual({
+      model: "kimi-k2.5",
+      service: "moonshot",
+    });
+  });
+
+  it("keeps a valid user selection over the configured default", () => {
+    expect(pickModelSelection(grouped, "gemini-2.5-flash", "google", {
+      service: "moonshot",
+      model: "kimi-k2.5",
+    })).toBeNull();
+  });
+
   it("returns null when no models are available", () => {
     expect(pickModelSelection([], "gemini-3.1-flash-image-preview", "google")).toBeNull();
   });

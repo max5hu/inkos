@@ -160,6 +160,21 @@ describe("agent deterministic writing tools", () => {
     expect(pipeline.writeNextChapter).toHaveBeenCalledWith("harbor", 2600);
   });
 
+  it("surfaces writer sub-agent pipeline failures as tool errors", async () => {
+    const pipeline = {
+      writeNextChapter: vi.fn(async () => {
+        throw new Error("disk write failed");
+      }),
+    };
+    const tool = createSubAgentTool(pipeline as never, "harbor");
+
+    await expect(tool.execute("tool-writer-fails", {
+      agent: "writer",
+      bookId: "harbor",
+      instruction: "继续写下一章",
+    } as any)).rejects.toThrow("disk write failed");
+  });
+
   it("uses the active book for writer when bookId is omitted", async () => {
     const pipeline = {
       writeNextChapter: vi.fn(async () => ({

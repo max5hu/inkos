@@ -190,6 +190,14 @@ export function createSubAgentTool(
             return textResult(
               `Chapter written for "${targetBookId}". ` +
               `Word count: ${(result as any).wordCount ?? "unknown"}.`,
+              {
+                kind: "chapter_written",
+                bookId: targetBookId,
+                chapterNumber: (result as any).chapterNumber,
+                title: (result as any).title,
+                wordCount: (result as any).wordCount,
+                status: (result as any).status,
+              },
             );
           }
 
@@ -240,7 +248,7 @@ export function createSubAgentTool(
         }
       } catch (err: any) {
         console.error(`[sub_agent] "${agent}" failed:`, err);
-        return textResult(`Sub-agent "${agent}" failed: ${err?.message ?? String(err)}`);
+        throw err;
       }
     },
   };

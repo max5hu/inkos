@@ -32,6 +32,7 @@ import {
   listModelsForService,
   getAllEndpoints,
   probeModelsFromUpstream,
+  fetchWithProxy,
   chatCompletion,
   buildExportArtifact,
   GLOBAL_ENV_PATH,
@@ -140,6 +141,65 @@ function extractToolError(result: unknown): string {
     }
   }
   return String(result).slice(0, 500);
+}
+
+function isLikelyFailedToolResult(exec: CollectedToolExec): boolean {
+  if (exec.status === "error") return true;
+  const text = `${exec.error ?? ""}\n${exec.result ?? ""}`.toLowerCase();
+  return /\bfailed\b|\berror\b|失败|异常|出错/.test(text);
+}
+
+function hasSuccessfulSubAgentExec(
+  execs: ReadonlyArray<CollectedToolExec>,
+  agent: string,
+): boolean {
+  return execs.some((exec) =>
+    exec.tool === "sub_agent"
+    && exec.agent === agent
+    && exec.status === "completed"
+    && !isLikelyFailedToolResult(exec)
+  );
+}
+
+function isWriteNextInstruction(instruction: string): boolean {
+  const trimmed = instruction.trim();
+  return /^(continue|继续|继续写|写下一章|write next|下一章|再来一章)$/i.test(trimmed)
+    || /(继续写|写下一章|下一章|再来一章|write\s+next)/i.test(trimmed);
+}
+
+function looksLikeBookCreatedClaim(responseText: string): boolean {
+  return /(?:已|已经|成功).{0,12}(?:创建|建书|初始化|保存).{0,12}(?:作品|书|书籍|文件夹)?/.test(responseText)
+    || /\b(?:created|initiali[sz]ed|saved)\b.{0,40}\b(?:book|project|novel)\b/i.test(responseText);
+}
+
+function validateAgentActionExecution(args: {
+  readonly instruction: string;
+  readonly agentBookId: string | null | undefined;
+  readonly responseText: string;
+  readonly collectedToolExecs: ReadonlyArray<CollectedToolExec>;
+}): string | undefined {
+  const failedExec = args.collectedToolExecs.find(isLikelyFailedToolResult);
+  if (failedExec) {
+    return `${failedExec.label} 执行失败：${failedExec.error ?? failedExec.result ?? "未知错误"}`;
+  }
+
+  if (
+    args.agentBookId
+    && isWriteNextInstruction(args.instruction)
+    && !hasSuccessfulSubAgentExec(args.collectedToolExecs, "writer")
+  ) {
+    return "模型声称已完成下一章，但没有实际调用写作工具。请重试；如果仍失败，请检查模型是否支持工具调用。";
+  }
+
+  if (
+    !args.agentBookId
+    && looksLikeBookCreatedClaim(args.responseText)
+    && !resolveCreatedBookIdFromToolExecs(args.collectedToolExecs)
+  ) {
+    return "模型声称已创建作品，但没有实际调用建书工具，也没有生成作品文件。请补充书名/题材后重试，或换用支持工具调用的模型。";
+  }
+
+  return undefined;
 }
 
 interface CollectedToolExec {
@@ -538,6 +598,7 @@ async function fetchModelsFromServiceBaseUrl(
   serviceId: string,
   baseUrl: string,
   apiKey: string,
+  proxyUrl?: string,
 ): Promise<{ models: Array<{ id: string; name: string }>; error?: string; authFailed?: boolean }> {
   const endpoint = isCustomServiceId(serviceId)
     ? undefined
@@ -547,10 +608,10 @@ async function fetchModelsFromServiceBaseUrl(
     : endpoint?.modelsBaseUrl ?? (endpoint ? baseUrl : resolveServiceModelsBaseUrl(serviceId) ?? baseUrl);
   const modelsUrl = modelsBaseUrl.replace(/\/$/, "") + "/models";
   try {
-    const res = await fetch(modelsUrl, {
+    const res = await fetchWithProxy(modelsUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10_000),
-    });
+    }, proxyUrl);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       return {
@@ -579,6 +640,7 @@ async function probeServiceCapabilities(args: {
   preferredApiFormat?: "chat" | "responses";
   preferredStream?: boolean;
   preferredModel?: string;
+  proxyUrl?: string;
 }): Promise<ServiceProbeResult> {
   const rawConfig = await loadRawConfig(args.root).catch(() => ({} as Record<string, unknown>));
   const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
@@ -590,7 +652,7 @@ async function probeServiceCapabilities(args: {
       : null;
 
   const baseService = isCustomServiceId(args.service) ? "custom" : args.service;
-  const modelsResponse = await fetchModelsFromServiceBaseUrl(baseService, args.baseUrl, args.apiKey);
+  const modelsResponse = await fetchModelsFromServiceBaseUrl(baseService, args.baseUrl, args.apiKey, args.proxyUrl);
   if (modelsResponse.authFailed) {
     return {
       ok: false,
@@ -646,6 +708,7 @@ async function probeServiceCapabilities(args: {
         temperature: 0.7,
         maxTokens: 2048,
         thinkingBudget: 0,
+        proxyUrl: args.proxyUrl,
         apiFormat: plan.apiFormat,
         stream: plan.stream,
       } as ProjectConfig["llm"]);
@@ -776,6 +839,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       model: overrides?.model ?? currentConfig.llm.model,
       projectRoot: root,
       defaultLLMConfig: currentConfig.llm,
+      foundationReviewRetries: currentConfig.foundation?.reviewRetries ?? 2,
       modelOverrides: currentConfig.modelOverrides,
       notifyChannels: currentConfig.notify,
       logger,
@@ -1208,6 +1272,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const envConfig = await readEnvConfigStatus(root);
     return c.json({
       services,
+      service: typeof llm.service === "string" ? llm.service : null,
       defaultModel: llm.defaultModel ?? null,
       configSource: "studio" satisfies LLMConfigSource,
       storedConfigSource: normalizeConfigSource(llm.configSource),
@@ -1261,6 +1326,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       return c.json({ ok: false, error: `未知服务商: ${service}` }, 400);
     }
 
+    const rawConfig = await loadRawConfig(root).catch(() => ({} as Record<string, unknown>));
+    const llm = (rawConfig.llm as Record<string, unknown> | undefined) ?? {};
     const probe = await probeServiceCapabilities({
       root,
       service,
@@ -1268,6 +1335,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       baseUrl: resolvedBaseUrl,
       preferredApiFormat: apiFormat,
       preferredStream: stream,
+      proxyUrl: typeof llm.proxyUrl === "string" ? llm.proxyUrl : undefined,
     });
 
     // B12: 升级响应 shape 为 { probe, chat, ... }，同时保留老字段供 UI 过渡期兼容
@@ -1932,6 +2000,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         instruction,
       );
 
+      if (result.responseText) {
+        const actionExecutionError = validateAgentActionExecution({
+          instruction,
+          agentBookId,
+          responseText: result.responseText,
+          collectedToolExecs,
+        });
+        if (actionExecutionError) {
+          return c.json({
+            error: { code: "AGENT_ACTION_NOT_EXECUTED", message: actionExecutionError },
+            response: actionExecutionError,
+          }, 502);
+        }
+      }
+
       let broadcastedCreatedBookId: string | null = null;
       const finalizeCreatedBook = async (): Promise<string | null> => {
         if (agentBookId) return null;
@@ -1992,6 +2075,18 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
             { maxTokens: 256 },
           );
           if (fallback.content?.trim()) {
+            const actionExecutionError = validateAgentActionExecution({
+              instruction,
+              agentBookId,
+              responseText: fallback.content,
+              collectedToolExecs,
+            });
+            if (actionExecutionError) {
+              return c.json({
+                error: { code: "AGENT_ACTION_NOT_EXECUTED", message: actionExecutionError },
+                response: actionExecutionError,
+              }, 502);
+            }
             await appendManualSessionMessages(root, bookSession.sessionId, [{
               role: "assistant",
               content: [{ type: "text", text: fallback.content }],
@@ -2613,6 +2708,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.post("/api/v1/books/:id/style/import", async (c) => {
     const id = c.req.param("id");
     const { text, sourceName } = await c.req.json<{ text: string; sourceName: string }>();
+    if (!text?.trim()) return c.json({ error: "text is required" }, 400);
 
     broadcast("style:start", { bookId: id });
     try {
@@ -2787,6 +2883,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
         preferredApiFormat: currentConfig.llm.apiFormat,
         preferredStream: currentConfig.llm.stream,
         preferredModel: currentConfig.llm.model,
+        proxyUrl: currentConfig.llm.proxyUrl,
       });
       checks.llmConnected = probe.ok;
     } catch { /* ignore */ }

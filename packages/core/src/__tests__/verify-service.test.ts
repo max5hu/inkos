@@ -47,6 +47,22 @@ describe("verifyService (B9)", () => {
     expect(result.probe.error).toContain("ECONNREFUSED");
   });
 
+  it("probe 使用显式 proxyUrl 连接 /models", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [{ id: "gpt-4o" }] }),
+      } as any)
+      .mockRejectedValue(new Error("test: no real chat backend"));
+    global.fetch = fetchMock as typeof fetch;
+
+    const result = await verifyService("openai", "sk-test", { proxyUrl: "http://127.0.0.1:9910" });
+    expect(result.probe.ok).toBe(true);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      dispatcher: expect.any(Object),
+    });
+  });
+
   it("provider 没 checkModel（custom baseUrl 空）→ chat 字段返回 null，不发 chat 请求", async () => {
     // custom 没 checkModel，verifyService 跳过 chat step
     const result = await verifyService("custom", "sk-x");
