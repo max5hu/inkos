@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.3.11
+
+### Release Focus
+
+Studio 服务与聚合模型接入更新：新增 kkaiapi 服务选项，修复自定义/本地 OpenAI-compatible 服务测试误用兜底模型、API Key 中文字符导致连接崩溃、服务配置删除缺失等问题，并补齐雷达历史、题材管理刷新和长篇多线比例落地。
+
+### Improvements
+
+- 新增 kkaiapi 聚合模型服务选项，Studio / CLI 服务配置可以直接选择并测试
+- Studio 新建书籍改走共享对话交互内核，避免建书入口和真实创作链路行为分叉
+- 雷达扫描结果持久化为历史记录，Studio 可浏览既有 scan 结果
+- 长篇大纲 / 章纲会更明确承接用户设定的多线比例，减少“比例写了但结构里没体现”的情况
+
+### Bug Fixes
+
+- 修复自定义服务连接测试误用全局兜底模型或错误协议，导致 llama.cpp / 本地 OpenAI-compatible 服务被误判不可用的问题
+- 修复 API Key 或请求头含中文等非 ASCII 字符时触发 ByteString 转换异常的问题
+- 修复 Studio 缺少删除自定义服务 / 模型配置入口的问题
+- 修复题材管理保存后文件已生成但 Studio 列表不刷新的问题
+- 修复 `hooks.json` 里 hook id 可能出现重复横线或异常标点的问题
+
 ## v1.3.10
 
 ### Release Focus
