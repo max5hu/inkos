@@ -1,34 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ToolExecution } from "../../../store/chat/types";
-
-// Import the grouping logic — we'll extract it as a named export
-// For now, inline the function to test the expected behavior
-function groupChronologically(executions: ToolExecution[]) {
-  type RenderGroup =
-    | { type: "pipeline"; exec: ToolExecution }
-    | { type: "utilities"; execs: ToolExecution[] };
-
-  const groups: RenderGroup[] = [];
-  let utilBuf: ToolExecution[] = [];
-
-  const flushUtils = () => {
-    if (utilBuf.length > 0) {
-      groups.push({ type: "utilities", execs: utilBuf });
-      utilBuf = [];
-    }
-  };
-
-  for (const exec of executions) {
-    if (exec.tool === "sub_agent") {
-      flushUtils();
-      groups.push({ type: "pipeline", exec });
-    } else {
-      utilBuf.push(exec);
-    }
-  }
-  flushUtils();
-  return groups;
-}
+import { groupToolExecutionsChronologically } from "../ToolExecutionSteps";
 
 const makeExec = (overrides: Partial<ToolExecution> & { id: string; tool: string }): ToolExecution => ({
   label: "test",
@@ -44,7 +16,7 @@ describe("groupChronologically", () => {
       makeExec({ id: "2", tool: "sub_agent", agent: "writer", label: "写作" }),
     ];
 
-    const groups = groupChronologically(execs);
+    const groups = groupToolExecutionsChronologically(execs);
 
     expect(groups).toHaveLength(2);
     expect(groups[0].type).toBe("utilities");
@@ -58,7 +30,7 @@ describe("groupChronologically", () => {
       makeExec({ id: "3", tool: "read", label: "读取文件" }),
     ];
 
-    const groups = groupChronologically(execs);
+    const groups = groupToolExecutionsChronologically(execs);
 
     expect(groups).toHaveLength(1);
     expect(groups[0].type).toBe("utilities");
@@ -75,7 +47,7 @@ describe("groupChronologically", () => {
       makeExec({ id: "4", tool: "grep", label: "搜索" }),
     ];
 
-    const groups = groupChronologically(execs);
+    const groups = groupToolExecutionsChronologically(execs);
 
     expect(groups).toHaveLength(3);
     expect(groups[0].type).toBe("utilities");
@@ -91,13 +63,29 @@ describe("groupChronologically", () => {
       makeExec({ id: "1", tool: "sub_agent", agent: "writer", label: "写作" }),
     ];
 
-    const groups = groupChronologically(execs);
+    const groups = groupToolExecutionsChronologically(execs);
 
     expect(groups).toHaveLength(1);
     expect(groups[0].type).toBe("pipeline");
   });
 
   it("handles empty array", () => {
-    expect(groupChronologically([])).toHaveLength(0);
+    expect(groupToolExecutionsChronologically([])).toHaveLength(0);
+  });
+
+  it("renders short fiction and cover tools as visible pipeline cards", () => {
+    const execs: ToolExecution[] = [
+      makeExec({ id: "1", tool: "read", label: "读取文件" }),
+      makeExec({ id: "2", tool: "generate_cover", label: "生成封面" }),
+      makeExec({ id: "3", tool: "short_fiction_run", label: "短篇生产" }),
+      makeExec({ id: "4", tool: "grep", label: "搜索" }),
+    ];
+
+    const groups = groupToolExecutionsChronologically(execs);
+
+    expect(groups).toHaveLength(4);
+    expect(groups.map((group) => group.type)).toEqual(["utilities", "pipeline", "pipeline", "utilities"]);
+    expect(groups[1].type === "pipeline" ? groups[1].exec.tool : "").toBe("generate_cover");
+    expect(groups[2].type === "pipeline" ? groups[2].exec.tool : "").toBe("short_fiction_run");
   });
 });

@@ -97,7 +97,7 @@ function ShortFictionResultPreview({ exec }: { exec: ToolExecution }) {
   if (!coverUrl) return null;
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-border/40 bg-background/70">
+    <div className="mx-3 mb-3 mt-1 overflow-hidden rounded-xl border border-border/40 bg-background/70">
       <img
         src={coverUrl}
         alt="短篇封面"
@@ -109,6 +109,10 @@ function ShortFictionResultPreview({ exec }: { exec: ToolExecution }) {
       </div>
     </div>
   );
+}
+
+function isPipelineTool(tool: string): boolean {
+  return tool === "sub_agent" || tool === "short_fiction_run" || tool === "generate_cover";
 }
 
 // -- Live elapsed timer hook --
@@ -160,6 +164,7 @@ function PipelineExecution({ exec }: { exec: ToolExecution }) {
           <ChevronDown size={14} className={`text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
         </div>
       </CollapsibleTrigger>
+      <ShortFictionResultPreview exec={exec} />
       <CollapsibleContent>
         <div className="px-3 pb-3 pt-1">
           {/* Real-time execution logs */}
@@ -181,7 +186,6 @@ function PipelineExecution({ exec }: { exec: ToolExecution }) {
               {exec.error}
             </div>
           )}
-          <ShortFictionResultPreview exec={exec} />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -235,7 +239,7 @@ type RenderGroup =
   | { type: "pipeline"; exec: ToolExecution }
   | { type: "utilities"; execs: ToolExecution[] };
 
-function groupChronologically(executions: ToolExecution[]): RenderGroup[] {
+export function groupToolExecutionsChronologically(executions: ToolExecution[]): RenderGroup[] {
   const groups: RenderGroup[] = [];
   let utilBuf: ToolExecution[] = [];
 
@@ -247,7 +251,7 @@ function groupChronologically(executions: ToolExecution[]): RenderGroup[] {
   };
 
   for (const exec of executions) {
-    if (exec.tool === "sub_agent") {
+    if (isPipelineTool(exec.tool)) {
       flushUtils();
       groups.push({ type: "pipeline", exec });
     } else {
@@ -259,7 +263,7 @@ function groupChronologically(executions: ToolExecution[]): RenderGroup[] {
 }
 
 export function ToolExecutionSteps({ executions }: ToolExecutionStepsProps) {
-  const groups = useMemo(() => groupChronologically(executions), [executions]);
+  const groups = useMemo(() => groupToolExecutionsChronologically(executions), [executions]);
 
   return (
     <div className="space-y-2 mt-2">
