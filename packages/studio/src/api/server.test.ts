@@ -1020,6 +1020,49 @@ describe("createStudioServer daemon lifecycle", () => {
     ]);
   });
 
+  it("refreshes top-level llm mirror when switching from custom baseUrl to a preset service", async () => {
+    await writeFile(join(root, "inkos.json"), JSON.stringify({
+      ...projectConfig,
+      llm: {
+        provider: "openai",
+        service: "custom",
+        configSource: "studio",
+        baseUrl: "https://www.openclaudecode.cn/v1",
+        model: "gpt-5.4",
+        apiFormat: "chat",
+        stream: true,
+        services: [
+          { service: "custom", name: "Global LLM", baseUrl: "https://www.openclaudecode.cn/v1", apiFormat: "chat", stream: true },
+        ],
+        defaultModel: "gpt-5.4",
+      },
+    }, null, 2), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const save = await app.request("http://localhost/api/v1/services/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service: "kkaiapi",
+        defaultModel: "deepseek-v4-flash",
+        services: [
+          { service: "kkaiapi", temperature: 0.7, apiFormat: "chat", stream: true },
+        ],
+      }),
+    });
+
+    expect(save.status).toBe(200);
+
+    const raw = JSON.parse(await readFile(join(root, "inkos.json"), "utf-8"));
+    expect(raw.llm.service).toBe("kkaiapi");
+    expect(raw.llm.defaultModel).toBe("deepseek-v4-flash");
+    expect(raw.llm.model).toBe("deepseek-v4-flash");
+    expect(raw.llm.provider).toBe("openai");
+    expect(raw.llm.baseUrl).toBe("https://api.kkaiapi.com/v1");
+  });
+
   it("deletes a custom service config and stored secret", async () => {
     await writeFile(join(root, "inkos.json"), JSON.stringify({
       ...projectConfig,

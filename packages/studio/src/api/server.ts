@@ -422,6 +422,26 @@ function mergeServiceConfig(existing: ServiceConfigEntry[], updates: ServiceConf
   return [...merged.values()];
 }
 
+function syncTopLevelLlmMirror(llm: Record<string, unknown>): void {
+  const selectedService = typeof llm.service === "string" ? llm.service : undefined;
+  if (!selectedService) return;
+
+  const services = normalizeServiceConfig(llm.services);
+  const selectedEntry = services.find((entry) => serviceConfigKey(entry) === selectedService)
+    ?? (!isCustomServiceId(selectedService) ? { service: selectedService } : undefined);
+  if (!selectedEntry) return;
+
+  const preset = resolveServicePreset(selectedEntry.service);
+  llm.provider = resolveServiceProviderFamily(selectedEntry.service) ?? "openai";
+  llm.baseUrl = selectedEntry.baseUrl ?? preset?.baseUrl ?? "";
+
+  const defaultModel = typeof llm.defaultModel === "string" ? llm.defaultModel.trim() : "";
+  if (defaultModel) llm.model = defaultModel;
+  if (selectedEntry.temperature !== undefined) llm.temperature = selectedEntry.temperature;
+  if (selectedEntry.apiFormat !== undefined) llm.apiFormat = selectedEntry.apiFormat;
+  if (selectedEntry.stream !== undefined) llm.stream = selectedEntry.stream;
+}
+
 async function loadRawConfig(root: string): Promise<Record<string, unknown>> {
   const configPath = join(root, "inkos.json");
   const raw = await readFile(configPath, "utf-8");
@@ -1486,6 +1506,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     if (body.service !== undefined) {
       llm.service = body.service;
     }
+    syncTopLevelLlmMirror(llm);
     await saveRawConfig(root, config);
     return c.json({ ok: true });
   });
