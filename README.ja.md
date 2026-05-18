@@ -27,7 +27,9 @@
 
 **v1.4.0 短編執筆と Studio Chat ワークフロー更新** — Studio Chat と CLI から独立した短編パッケージ、あらすじ、セールスポイント、表紙プロンプト、任意の表紙画像を生成できます。プロジェクトチャットはリロード後も保持され、生成物のプレビューと編集にも対応しました。
 
-**新機能：短編小説の執筆と表紙制作！** — Studio のチャットまたは CLI から、独立した短編パッケージを生成できます。完成本文、アウトライン記録、レビュー記録、あらすじ、セールスポイント、表紙プロンプト、表紙サービス設定後の表紙画像に対応します。
+**InkOS Short** — Studio のチャットまたは CLI から、独立した短編パッケージを生成できます。完成本文、アウトライン記録、レビュー記録、あらすじ、セールスポイント、表紙プロンプト、表紙サービス設定後の表紙画像に対応します。
+
+**集約 API 入口** — Studio のモデル設定では、集約モデルサービス向けに [kkaiapi](https://en.kkaiapi.com/)（[API docs](https://en.kkaiapi.com/docs) / [models and pricing](https://en.kkaiapi.com/models)）と OpenRouter を選択できます。
 
 **英語ネイティブ小説執筆に対応！** — 10種類の英語ジャンルプロファイルを内蔵し、専用のペーシングルール、疲労語リスト、監査ディメンションを搭載。`--lang en` を設定するだけですぐに始められます。
 
@@ -108,8 +110,6 @@ inkos config show-models        # 現在のルーティングを表示
 ```
 
 明示的なオーバーライドがないエージェントはグローバルモデルにフォールバックします。
-
-集約 API を使う場合、Studio では [kkaiapi](https://en.kkaiapi.com/)（[API docs](https://en.kkaiapi.com/docs) / [models and pricing](https://en.kkaiapi.com/models)）と OpenRouter を任意のプロバイダーとして選択できます。
 
 ### v1.2 アップデート
 
