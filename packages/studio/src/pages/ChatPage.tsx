@@ -35,8 +35,11 @@ import {
   type ChatPageModelPreference,
   filterModelGroups,
   getBookCreateSessionId,
+  getProjectChatSessionId,
+  pickProjectChatSessionId,
   pickModelSelection,
   setBookCreateSessionId,
+  setProjectChatSessionId,
 } from "./chat-page-state";
 
 // -- Types --
@@ -49,6 +52,7 @@ interface Nav {
 
 export interface ChatPageProps {
   readonly activeBookId?: string;
+  readonly mode?: "book" | "book-create" | "project-chat";
   readonly nav: Nav;
   readonly theme: Theme;
   readonly t: TFunction;
@@ -62,7 +66,7 @@ interface ServiceConfigPayload {
 
 // -- Component --
 
-export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPageProps) {
+export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-create", nav, theme, t, sse: _sse }: ChatPageProps) {
   // -- Store selectors --
   const messages = useChatStore(chatSelectors.activeMessages);
   const activeSessionId = useChatStore((s) => s.activeSessionId);
@@ -215,29 +219,48 @@ export function ChatPage({ activeBookId, nav, theme, t, sse: _sse }: ChatPagePro
         return;
       }
 
-      const existingId = getBookCreateSessionId();
+      const existingId = mode === "project-chat"
+        ? getProjectChatSessionId()
+        : getBookCreateSessionId();
       if (existingId) {
         await loadSessionDetail(existingId);
         if (cancelled) return;
 
         const state = useChatStore.getState();
         const session = state.sessions[existingId];
-        if (session && session.bookId === null) {
+        if (session && session.bookId === null && (mode !== "project-chat" || session.messages.length > 0)) {
           activateSession(existingId);
+          return;
+        }
+      }
+
+      if (mode === "project-chat") {
+        const projectSessions = await loadSessionList(null);
+        if (cancelled) return;
+
+        const reusableSessionId = pickProjectChatSessionId(projectSessions);
+        if (reusableSessionId) {
+          activateSession(reusableSessionId);
+          await loadSessionDetail(reusableSessionId);
+          if (!cancelled) setProjectChatSessionId(reusableSessionId);
           return;
         }
       }
 
       const newSessionId = await createSession(null);
       if (!cancelled) {
-        setBookCreateSessionId(newSessionId);
+        if (mode === "project-chat") {
+          setProjectChatSessionId(newSessionId);
+        } else {
+          setBookCreateSessionId(newSessionId);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [activeBookId, activateSession, createSession, loadSessionDetail, loadSessionList]);
+  }, [activeBookId, activateSession, createSession, loadSessionDetail, loadSessionList, mode]);
 
   const onSend = (text: string) => {
     if (!activeSessionId) return;

@@ -14,7 +14,13 @@ export interface ChatPageModelPreference {
   readonly service?: string | null;
 }
 
+export interface ChatPageSessionSummary {
+  readonly sessionId: string;
+  readonly messageCount: number;
+}
+
 const BOOK_CREATE_SESSION_KEY = "inkos.book-create.session-id";
+const PROJECT_CHAT_SESSION_KEY = "inkos.project-chat.session-id";
 
 export function getBookCreateSessionId(): string | null {
   return globalThis.localStorage?.getItem(BOOK_CREATE_SESSION_KEY) ?? null;
@@ -26,6 +32,14 @@ export function setBookCreateSessionId(sessionId: string): void {
 
 export function clearBookCreateSessionId(): void {
   globalThis.localStorage?.removeItem(BOOK_CREATE_SESSION_KEY);
+}
+
+export function getProjectChatSessionId(): string | null {
+  return globalThis.localStorage?.getItem(PROJECT_CHAT_SESSION_KEY) ?? null;
+}
+
+export function setProjectChatSessionId(sessionId: string): void {
+  globalThis.localStorage?.setItem(PROJECT_CHAT_SESSION_KEY, sessionId);
 }
 
 export function filterModelGroups(
@@ -87,4 +101,12 @@ export function pickModelSelection(
   const firstModel = firstGroup?.models[0];
   if (!firstGroup || !firstModel) return null;
   return { model: firstModel.id, service: firstGroup.service };
+}
+
+export function pickProjectChatSessionId(
+  sessions: ReadonlyArray<ChatPageSessionSummary>,
+): string | null {
+  return sessions.find((session) => session.messageCount > 0)?.sessionId
+    ?? sessions[0]?.sessionId
+    ?? null;
 }

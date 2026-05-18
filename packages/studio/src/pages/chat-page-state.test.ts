@@ -3,8 +3,11 @@ import {
   clearBookCreateSessionId,
   filterModelGroups,
   getBookCreateSessionId,
+  getProjectChatSessionId,
   pickModelSelection,
+  pickProjectChatSessionId,
   setBookCreateSessionId,
+  setProjectChatSessionId,
 } from "./chat-page-state";
 
 describe("book-create session localStorage helpers", () => {
@@ -55,6 +58,13 @@ describe("book-create session localStorage helpers", () => {
   it("clearBookCreateSessionId is safe when key doesn't exist", () => {
     clearBookCreateSessionId();
     expect(getBookCreateSessionId()).toBeNull();
+  });
+
+  it("keeps project chat session separate from book-create session", () => {
+    setBookCreateSessionId("book-create-session");
+    setProjectChatSessionId("project-chat-session");
+    expect(getBookCreateSessionId()).toBe("book-create-session");
+    expect(getProjectChatSessionId()).toBe("project-chat-session");
   });
 });
 
@@ -171,5 +181,26 @@ describe("pickModelSelection", () => {
 
   it("returns null when no models are available", () => {
     expect(pickModelSelection([], "gemini-3.1-flash-image-preview", "google")).toBeNull();
+  });
+});
+
+describe("pickProjectChatSessionId", () => {
+  it("prefers the newest project chat session that already has messages", () => {
+    expect(pickProjectChatSessionId([
+      { sessionId: "empty-latest", messageCount: 0 },
+      { sessionId: "short-fiction-session", messageCount: 3 },
+      { sessionId: "older-session", messageCount: 1 },
+    ])).toBe("short-fiction-session");
+  });
+
+  it("falls back to the newest empty session when all sessions are empty", () => {
+    expect(pickProjectChatSessionId([
+      { sessionId: "empty-latest", messageCount: 0 },
+      { sessionId: "empty-older", messageCount: 0 },
+    ])).toBe("empty-latest");
+  });
+
+  it("returns null when there is no project chat session", () => {
+    expect(pickProjectChatSessionId([])).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 
 export type HashRoute =
   | { page: "dashboard" }
+  | { page: "chat" }
   | { page: "book"; bookId: string }
   | { page: "book-settings"; bookId: string }
   | { page: "book-create" }
@@ -22,6 +23,7 @@ function parseHash(hash: string): HashRoute {
   const path = hash.replace(/^#\/?/, "");
 
   if (!path || path === "/") return { page: "dashboard" };
+  if (path === "chat") return { page: "chat" };
   if (path === "config" || path === "services") return { page: "services" };
   if (path === "book/new") return { page: "book-create" };
 
@@ -40,6 +42,7 @@ function parseHash(hash: string): HashRoute {
 function routeToHash(route: HashRoute): string {
   switch (route.page) {
     case "dashboard": return "#/";
+    case "chat": return "#/chat";
     case "book": return `#/book/${encodeURIComponent(route.bookId)}`;
     case "book-settings": return `#/book/${encodeURIComponent(route.bookId)}/settings`;
     case "book-create": return "#/book/new";
@@ -51,7 +54,7 @@ function routeToHash(route: HashRoute): string {
 
 export { parseHash, routeToHash }; // for testing
 
-const HASH_PAGES = new Set(["dashboard", "book", "book-settings", "book-create", "services", "service-detail"]);
+const HASH_PAGES = new Set(["dashboard", "chat", "book", "book-settings", "book-create", "services", "service-detail"]);
 
 export function useHashRoute() {
   const [route, setRouteState] = useState<HashRoute>(() => parseHash(window.location.hash));

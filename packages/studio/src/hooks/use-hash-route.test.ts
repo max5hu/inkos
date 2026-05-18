@@ -11,6 +11,10 @@ describe("hash route", () => {
       expect(parseHash("#/")).toEqual({ page: "dashboard" });
     });
 
+    it("parses chat route", () => {
+      expect(parseHash("#/chat")).toEqual({ page: "chat" });
+    });
+
     it("parses book route", () => {
       expect(parseHash("#/book/my-novel")).toEqual({ page: "book", bookId: "my-novel" });
     });
@@ -51,6 +55,10 @@ describe("hash route", () => {
   describe("routeToHash", () => {
     it("dashboard -> #/", () => {
       expect(routeToHash({ page: "dashboard" })).toBe("#/");
+    });
+
+    it("chat -> #/chat", () => {
+      expect(routeToHash({ page: "chat" })).toBe("#/chat");
     });
 
     it("book -> #/book/{id}", () => {

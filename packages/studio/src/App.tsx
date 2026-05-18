@@ -66,6 +66,7 @@ export function App() {
 
   const nav = {
     toDashboard: () => setRoute({ page: "dashboard" }),
+    toChat: () => setRoute({ page: "chat" }),
     toBook: (bookId: string) => setRoute({ page: "book", bookId }),
     toBookSettings: (bookId: string) => setRoute({ page: "book-settings", bookId }),
     toBookCreate: () => setRoute({ page: "book-create" }),
@@ -174,6 +175,18 @@ export function App() {
           {isBookCreateChatRoute(route) && (
             <div className="absolute inset-0 flex min-w-0">
               <ChatPage
+                mode="book-create"
+                nav={nav}
+                theme={theme}
+                t={t}
+                sse={sse}
+              />
+            </div>
+          )}
+          {route.page === "chat" && (
+            <div className="absolute inset-0 flex min-w-0">
+              <ChatPage
+                mode="project-chat"
                 nav={nav}
                 theme={theme}
                 t={t}
@@ -185,6 +198,7 @@ export function App() {
             <div className="absolute inset-0 flex min-w-0">
               <ChatPage
                 activeBookId={route.bookId}
+                mode="book"
                 nav={nav}
                 theme={theme}
                 t={t}

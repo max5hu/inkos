@@ -145,7 +145,7 @@ export interface MessageActions {
   replaceStreamWithError: (sessionId: string, streamTs: number, errorMsg: string) => void;
   addErrorMessage: (sessionId: string, errorMsg: string) => void;
   loadSessionMessages: (sessionId: string, msgs: ReadonlyArray<SessionMessage>) => void;
-  loadSessionList: (bookId: string | null) => Promise<void>;
+  loadSessionList: (bookId: string | null) => Promise<ReadonlyArray<SessionSummary>>;
   createSession: (bookId: string | null) => Promise<string>;
   createDraftSession: (bookId: string | null) => string;
   renameSession: (sessionId: string, title: string) => Promise<void>;

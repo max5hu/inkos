@@ -83,6 +83,7 @@ const strings = {
   "nav.agentOnline": { zh: "代理在线", en: "Agent Online" },
   "nav.agentOffline": { zh: "代理离线", en: "Agent Offline" },
   "nav.tools": { zh: "工具", en: "Tools" },
+  "nav.chat": { zh: "普通聊天", en: "Chat" },
   "nav.style": { zh: "文风", en: "Style" },
   "nav.import": { zh: "导入", en: "Import" },
   "nav.radar": { zh: "市场雷达", en: "Radar" },

@@ -114,8 +114,9 @@ export const createMessageSlice: StateCreator<ChatStore, [], [], MessageActions>
           },
         };
       });
+      return data.sessions;
     } catch {
-      // ignore
+      return [];
     }
   },
 
