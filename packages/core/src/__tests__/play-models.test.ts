@@ -217,4 +217,20 @@ describe("play models", () => {
     expect(mutation.edges.upsert).toHaveLength(1);
     expect(mutation.edges.upsert[0]?.id).toBe("edge_good");
   });
+
+  it("never throws on a structurally-wrong mutation — every off-shape field degrades", () => {
+    const mutation = PlayMutationSchema.parse({
+      eventId: "evt-9",
+      turn: "9",              // string number -> coerced to 9
+      actionKind: "ponder",   // not in enum -> falls back to "do"
+      notes: "just one note", // string -> ["just one note"]
+      entities: "nope",       // garbage -> default { upsert: [] }
+      blocked: "yes",         // non-boolean -> default false
+    });
+    expect(mutation.turn).toBe(9);
+    expect(mutation.actionKind).toBe("do");
+    expect(mutation.notes).toEqual(["just one note"]);
+    expect(mutation.entities.upsert).toEqual([]);
+    expect(mutation.blocked).toBe(false);
+  });
 });

@@ -51,7 +51,14 @@ export class PlayActionInterpreterAgent extends BaseAgent {
       { role: "system", content: buildActionInterpreterSystemPrompt(input.language ?? "zh") },
       { role: "user", content: buildActionInterpreterUserPrompt(input, input.language ?? "zh") },
     ], { temperature: 0.15, maxTokens: 1024 });
-    return PlayActionIntentSchema.parse(parseJson(response.content));
+    // Never throw on the model's output: degrade a fully-unparseable response to a generic action
+    // (the player's raw text as a "do") rather than crashing the turn.
+    let raw: unknown = {};
+    try { raw = parseJson(response.content); } catch { /* malformed JSON → degrade below */ }
+    const parsed = PlayActionIntentSchema.safeParse(raw);
+    return parsed.success
+      ? parsed.data
+      : PlayActionIntentSchema.parse({ actionKind: "do", intent: input.input });
   }
 }
 
@@ -69,7 +76,20 @@ export class PlayWorldMutatorAgent extends BaseAgent {
       { role: "system", content: buildWorldMutatorSystemPrompt(input.language ?? "zh") },
       { role: "user", content: buildWorldMutatorUserPrompt(input, input.language ?? "zh") },
     ], { temperature: 0.25, maxTokens: 4096 });
-    return PlayMutationSchema.parse(parseJson(response.content));
+    // Never throw on the model's output: an unparseable mutation degrades to a blocked, no-op turn
+    // (with a reason) instead of crashing play_step. eventId is always backfilled.
+    let raw: unknown = {};
+    try { raw = parseJson(response.content); } catch { /* malformed JSON → degrade below */ }
+    const parsed = PlayMutationSchema.safeParse(raw);
+    const mutation = parsed.success
+      ? parsed.data
+      : PlayMutationSchema.parse({
+          turn: input.turn,
+          actionKind: input.action.actionKind,
+          blocked: true,
+          blockedReason: "模型输出无法解析为有效的状态变更，本回合未推进世界状态。",
+        });
+    return { ...mutation, eventId: mutation.eventId || `evt-${input.turn}` };
   }
 }
 

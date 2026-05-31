@@ -31,8 +31,8 @@ export const PlayActionIntentSchema = z.object({
   // Interpreters drift: bad/extra action kinds, null targets, numbers or objects in free-text
   // fields, object-shaped secondary actions. Coerce and tolerate so no off-shape field crashes the turn.
   actionKind: PlayActionKindSchema.catch("do"),
-  targetEntityLabel: z.string().nullish().transform((v) => (v && v.trim() ? v : undefined)),
-  targetLocationLabel: z.string().nullish().transform((v) => (v && v.trim() ? v : undefined)),
+  targetEntityLabel: z.string().nullish().transform((v) => (v && v.trim() ? v : undefined)).catch(undefined),
+  targetLocationLabel: z.string().nullish().transform((v) => (v && v.trim() ? v : undefined)).catch(undefined),
   intent: coercedString,
   manner: coercedString,
   risk: coercedString,
@@ -154,6 +154,7 @@ function normalizePlayMutation(value: unknown): unknown {
   if (Array.isArray(v.edges)) v.edges = { upsert: v.edges };
   if (Array.isArray(v.stateSlots)) v.stateSlots = { upsert: v.stateSlots };
   if (Array.isArray(v.evidence)) v.evidence = { transitions: v.evidence };
+  if (typeof v.notes === "string") v.notes = v.notes.trim() ? [v.notes] : [];
   return v;
 }
 
@@ -163,21 +164,23 @@ const PlayEdgeExpireSchema = z.object({
   reason: z.string().default(""),
 });
 
+// Every field is .catch-guarded so a single off-shape field degrades to its default instead of
+// throwing and crashing the whole turn (fail-open, not fail-closed).
 export const PlayMutationSchema = z.preprocess(normalizePlayMutation, z.object({
-  eventId: z.string().min(1),
-  turn: z.number().int().min(0),
+  eventId: z.string().min(1).catch(""),
+  turn: z.coerce.number().int().min(0).catch(0),
   actionKind: PlayActionKindSchema.catch("do"),
-  summary: coercedString,
-  entities: z.object({ upsert: lenientArray(PlayEntitySchema) }).default({ upsert: [] }),
+  summary: coercedString.catch(""),
+  entities: z.object({ upsert: lenientArray(PlayEntitySchema) }).catch({ upsert: [] }),
   edges: z.object({
     upsert: lenientArray(PlayEdgeSchema),
     expire: lenientArray(PlayEdgeExpireSchema),
-  }).default({ upsert: [], expire: [] }),
-  stateSlots: z.object({ upsert: lenientArray(PlayStateSlotSchema) }).default({ upsert: [] }),
-  evidence: z.object({ transitions: lenientArray(PlayEvidenceTransitionSchema) }).default({ transitions: [] }),
-  blocked: z.boolean().default(false),
-  blockedReason: coercedString,
-  notes: z.array(z.string()).default([]),
+  }).catch({ upsert: [], expire: [] }),
+  stateSlots: z.object({ upsert: lenientArray(PlayStateSlotSchema) }).catch({ upsert: [] }),
+  evidence: z.object({ transitions: lenientArray(PlayEvidenceTransitionSchema) }).catch({ transitions: [] }),
+  blocked: z.boolean().catch(false),
+  blockedReason: coercedString.catch(""),
+  notes: lenientArray(coercedString).catch([]),
 }));
 export type PlayMutationInput = z.input<typeof PlayMutationSchema>;
 export type PlayMutation = z.infer<typeof PlayMutationSchema>;

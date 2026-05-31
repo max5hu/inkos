@@ -34,18 +34,23 @@ describe("play agents", () => {
     });
   });
 
-  it("rejects mutator output that is not a valid mutation", async () => {
+  it("degrades invalid mutator output into a safe no-op mutation instead of throwing", async () => {
     const agent = new PlayWorldMutatorAgent(ctx);
     vi.spyOn(agent as unknown as { chat: PlayWorldMutatorAgent["chat"] }, "chat").mockResolvedValue({
       content: JSON.stringify({ eventId: "", turn: -1, actionKind: "teleport" }),
     } as never);
 
-    await expect(agent.proposeMutation({
+    // The chat agent must not hard-crash on bad model output: the bad enum falls back to "do",
+    // eventId is backfilled, and the turn degrades to a no-op rather than a thrown error.
+    const mutation = await agent.proposeMutation({
       turn: 1,
       input: "我打开导航",
       action: { actionKind: "look", intent: "查看导航" },
       context: "车内。",
-    })).rejects.toThrow();
+    });
+    expect(mutation.actionKind).toBe("do");
+    expect(mutation.eventId).toBe("evt-1");
+    expect(mutation.entities.upsert).toEqual([]);
   });
 
   it("renders the applied state as prose plus suggested actions", async () => {
