@@ -515,6 +515,98 @@ describe("WriterAgent", () => {
     }
   });
 
+  it("falls back to legacy settlement tags when runtime-state delta JSON is malformed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "inkos-writer-bad-delta-test-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    await mkdir(storyDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(join(storyDir, "story_bible.md"), "# Story Bible\n\n- The jade seal cannot be destroyed.\n", "utf-8"),
+      writeFile(join(storyDir, "volume_outline.md"), "# Volume Outline\n\n## Chapter 3\nTrace the debt.\n", "utf-8"),
+      writeFile(join(storyDir, "style_guide.md"), "# Style Guide\n\n- Keep it tense.\n", "utf-8"),
+      writeFile(join(storyDir, "current_state.md"), "# Current State\n\n| Field | Value |\n| --- | --- |\n| Current Chapter | 2 |\n", "utf-8"),
+      writeFile(join(storyDir, "pending_hooks.md"), "| hook_id | status |\n| --- | --- |\n| mentor-debt | open |\n", "utf-8"),
+      writeFile(join(storyDir, "chapter_summaries.md"), "| chapter | title | events |\n| --- | --- | --- |\n| 2 | Old Ledger | Debt sharpens |\n", "utf-8"),
+      writeFile(join(storyDir, "character_matrix.md"), "| character | role |\n| --- | --- |\n| Lin Yue | lead |\n", "utf-8"),
+    ]);
+
+    const agent = new WriterAgent({
+      client: {
+        provider: "openai",
+        apiFormat: "chat",
+        stream: false,
+        defaults: {
+          temperature: 0.7,
+          maxTokens: 4096,
+          thinkingBudget: 0,
+          extra: {},
+        },
+      },
+      model: "test-model",
+      projectRoot: root,
+    });
+
+    vi.spyOn(WriterAgent.prototype as never, "chat" as never)
+      .mockResolvedValueOnce({
+        content: "=== OBSERVATIONS ===\n- observed",
+        usage: ZERO_USAGE,
+      })
+      .mockResolvedValueOnce({
+        content: [
+          "=== POST_SETTLEMENT ===",
+          "- legacy settlement survived",
+          "",
+          "=== RUNTIME_STATE_DELTA ===",
+          "{ this is not json }",
+          "",
+          "=== UPDATED_STATE ===",
+          "| Field | Value |",
+          "| --- | --- |",
+          "| Current Chapter | 3 |",
+          "| Current Goal | Keep tracing the debt |",
+          "",
+          "=== UPDATED_HOOKS ===",
+          "| hook_id | status |",
+          "| --- | --- |",
+          "| mentor-debt | progressing |",
+          "",
+          "=== CHAPTER_SUMMARY ===",
+          "| 3 | River Ledger | Lin Yue | Legacy fallback wrote summary |",
+        ].join("\n"),
+        usage: ZERO_USAGE,
+      });
+
+    try {
+      const output = await agent.settleChapterState({
+        book: {
+          id: "writer-book",
+          title: "Writer Book",
+          platform: "tomato",
+          genre: "other",
+          status: "active",
+          targetChapters: 20,
+          chapterWordCount: 2200,
+          language: "en",
+          createdAt: "2026-03-25T00:00:00.000Z",
+          updatedAt: "2026-03-25T00:00:00.000Z",
+        },
+        bookDir,
+        chapterNumber: 3,
+        title: "River Ledger",
+        content: "Lin Yue follows the debt into the river-port ledger.",
+      });
+
+      expect(output.runtimeStateDelta).toBeUndefined();
+      expect(output.postSettlement).toContain("legacy settlement survived");
+      expect(output.updatedState).toContain("Keep tracing the debt");
+      expect(output.updatedHooks).toContain("mentor-debt");
+      expect(output.chapterSummary).toContain("Legacy fallback wrote summary");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("overrides hallucinated chapter numbers across both delta and summary row", async () => {
     const root = await mkdtemp(join(tmpdir(), "inkos-writer-runtime-state-hallucinated-chapter-test-"));
     const bookDir = join(root, "book");
