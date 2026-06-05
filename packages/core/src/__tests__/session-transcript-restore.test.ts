@@ -395,6 +395,136 @@ describe("session transcript restore", () => {
     expect(body).not.toContain("\"toolResult\"");
   });
 
+  it("恢复 agent 上下文时只保留最近 12 条自然对话", async () => {
+    let seq = 1;
+    for (let i = 1; i <= 15; i++) {
+      const requestId = `r${i}`;
+      await appendTranscriptEvent(projectRoot, {
+        type: "request_started",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        seq: seq++,
+        timestamp: seq,
+        sessionKind: "book",
+        input: `自然对话 ${i}`,
+      });
+      await appendTranscriptEvent(projectRoot, {
+        type: "message",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        uuid: `u${i}`,
+        parentUuid: null,
+        seq: seq++,
+        role: "user",
+        timestamp: seq,
+        message: { role: "user", content: `自然对话 ${i}`, timestamp: seq },
+      } as MessageEvent);
+      await appendTranscriptEvent(projectRoot, {
+        type: "request_committed",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        seq: seq++,
+        timestamp: seq,
+      });
+    }
+
+    const restored = await restoreAgentMessagesFromTranscript(projectRoot, "s1", "book");
+    const restoredText = restored.map((message) => {
+      const content = (message as any).content;
+      return typeof content === "string" ? content : "";
+    });
+
+    expect(restored).toHaveLength(12);
+    expect(restoredText).not.toContain("自然对话 1");
+    expect(restoredText).not.toContain("自然对话 2");
+    expect(restoredText).not.toContain("自然对话 3");
+    expect(restoredText).toContain("自然对话 4");
+    expect(restoredText).toContain("自然对话 15");
+  });
+
+  it("恢复 agent 上下文时只保留最近 8 条工具摘要", async () => {
+    let seq = 1;
+    for (let i = 1; i <= 10; i++) {
+      const requestId = `tool-${i}`;
+      const toolCallId = `call-${i}`;
+      await appendTranscriptEvent(projectRoot, {
+        type: "request_started",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        seq: seq++,
+        timestamp: seq,
+        sessionKind: "book",
+        input: `工具轮 ${i}`,
+      });
+      await appendTranscriptEvent(projectRoot, {
+        type: "message",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        uuid: `a${i}`,
+        parentUuid: null,
+        seq: seq++,
+        role: "assistant",
+        timestamp: seq,
+        toolCallId,
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: toolCallId, name: "sub_agent", arguments: { agent: "writer" } }],
+          api: "openai-completions",
+          provider: "openai",
+          model: "deepseek-v4-pro",
+          usage,
+          stopReason: "toolUse",
+          timestamp: seq,
+        },
+      } as MessageEvent);
+      await appendTranscriptEvent(projectRoot, {
+        type: "message",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        uuid: `t${i}`,
+        parentUuid: `a${i}`,
+        seq: seq++,
+        role: "toolResult",
+        timestamp: seq,
+        toolCallId,
+        sourceToolAssistantUuid: `a${i}`,
+        message: {
+          role: "toolResult",
+          toolCallId,
+          toolName: "sub_agent",
+          content: [{ type: "text", text: `工具结果 ${i}` }],
+          isError: false,
+          timestamp: seq,
+        },
+      } as MessageEvent);
+      await appendTranscriptEvent(projectRoot, {
+        type: "request_committed",
+        version: 1,
+        sessionId: "s1",
+        requestId,
+        seq: seq++,
+        timestamp: seq,
+      });
+    }
+
+    const restored = await restoreAgentMessagesFromTranscript(projectRoot, "s1", "book");
+    const content = String((restored[0] as any).content);
+    const lines = content.split("\n");
+
+    expect(restored).toHaveLength(1);
+    expect(content).toContain("历史状态摘要");
+    expect(lines.some((line) => /工具结果 1$/.test(line))).toBe(false);
+    expect(lines.some((line) => /工具结果 2$/.test(line))).toBe(false);
+    expect(lines.some((line) => /工具结果 3$/.test(line))).toBe(true);
+    expect(lines.some((line) => /工具结果 10$/.test(line))).toBe(true);
+  });
+
   it("恢复中断工具轮次时只保留历史摘要和后续自然输入", async () => {
     await appendTranscriptEvent(projectRoot, {
       type: "request_started",
