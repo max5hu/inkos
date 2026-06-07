@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Gamepad2, X, ChevronDown } from "lucide-react";
 import { fetchJson } from "../../hooks/use-api";
 import {
-  HOLDING_TYPES, HOLDING_GLYPH, SLOT_GLYPH,
-  type HudDetail, type HudRow,
+  HOLDING_TYPES, HOLDING_GLYPH, SLOT_GLYPH, EVIDENCE_LADDER,
+  type HudDetail, type HudRow, type HoldingRow, type HoldingRelation, type HoldingLifecycle,
 } from "./play-hud/types";
 
 // The HUD is genre-neutral: it renders whatever the world graph contains,
@@ -18,6 +18,8 @@ interface PlayEntity {
   readonly summary?: string;
   readonly status?: string;
   readonly imageUrl?: string;
+  readonly createdEventId?: string;
+  readonly updatedEventId?: string;
 }
 interface PlayEdge {
   readonly id: string;
@@ -34,6 +36,7 @@ interface PlayStateSlot {
   readonly label: string;
   readonly value: unknown;
   readonly updatedEventId?: string;
+  readonly ownerEntityId?: string | null;
 }
 interface PlayEvent {
   readonly id: string;
@@ -83,6 +86,24 @@ function formatValue(value: unknown): string {
   }
 }
 
+// Render a state-slot value for display. Numeric {current,min?,max?} becomes
+// "62/80" plus a 0..1 ratio for a progress bar; everything else falls back to
+// formatValue (string/number as-is, objects/arrays JSON-stringified).
+function meterDisplay(value: unknown): { text: string; ratio?: number } {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const v = value as Record<string, unknown>;
+    if (typeof v.current === "number") {
+      const cur = v.current;
+      const min = typeof v.min === "number" ? v.min : 0;
+      const max = typeof v.max === "number" ? v.max : undefined;
+      const text = max != null ? `${cur}/${max}` : String(cur);
+      const ratio = max != null && max > min ? Math.max(0, Math.min(1, (cur - min) / (max - min))) : undefined;
+      return { text, ratio };
+    }
+  }
+  return { text: formatValue(value) };
+}
+
 function isHoldingEdge(edge: PlayEdge, entity: PlayEntity): boolean {
   if (edge.value?.role !== "holding") return false;
   if (entity.type === "item") return true;
@@ -110,7 +131,7 @@ interface HudView {
   readonly facing: ReadonlyArray<HudRow>;
   // Actor subset of `facing` (excludes locations) — only actors auto-illustrate.
   readonly actors: ReadonlyArray<HudRow>;
-  readonly holdings: ReadonlyArray<HudRow>;
+  readonly holdings: ReadonlyArray<HoldingRow>;
   readonly meters: ReadonlyArray<HudRow>;
 }
 
@@ -147,6 +168,10 @@ export function buildView(run: PlayRunResponse | null): HudView | null {
   const labelOf = new Map(entities.map((e) => [e.id, e.label]));
   const outcomeOf = new Map(events.map((e) => [e.id, e.outcomeSummary ?? ""]));
   const currentEdges = edges.filter((e) => e.validUntilEventId == null);
+
+  const latestEvent = events.reduce<PlayEvent | null>((acc, e) => (acc && acc.turn > e.turn ? acc : e), null);
+  const latestEventId = latestEvent?.id ?? null;
+  const turnOf = new Map(events.map((e) => [e.id, e.turn]));
 
   const summaryDetail = (e: PlayEntity): HudDetail[] => {
     const summary = e.summary?.trim();
@@ -192,27 +217,71 @@ export function buildView(run: PlayRunResponse | null): HudView | null {
       details: summaryDetail(e),
       imageUrl: e.imageUrl,
     }));
-  const holdings: HudRow[] = entities
+  const ownedMeters = (id: string): HudRow[] =>
+    stateSlots
+      .filter((s) => s.ownerEntityId === id && s.kind !== "evidence")
+      .map((slot) => {
+        const { text, ratio } = meterDisplay(slot.value);
+        return { id: slot.id, glyph: SLOT_GLYPH[slot.kind] ?? "•", label: slot.label, value: text, note: null, details: [], ratio };
+      });
+  // The holding's web shows what it connects to in the world. The player is
+  // excluded entirely — "you hold/wield it" is already implied by it being a
+  // holding, so any actor_player edge (holding or relation) is not a web node.
+  const relationsOf = (id: string): HoldingRelation[] =>
+    currentEdges
+      .filter((edge) =>
+        (edge.fromId === id || edge.toId === id)
+        && edge.fromId !== "actor_player" && edge.toId !== "actor_player")
+      .map((edge) => {
+        const otherId = edge.fromId === id ? edge.toId : edge.fromId;
+        return {
+          targetLabel: labelOf.get(otherId) ?? otherId,
+          type: edge.type,
+          strength: typeof edge.strength === "number" ? edge.strength : undefined,
+        };
+      });
+  const lifecycleOf = (id: string): HoldingLifecycle | undefined => {
+    const slot = stateSlots.find((s) => s.ownerEntityId === id && s.kind === "evidence");
+    if (!slot || typeof slot.value !== "object" || slot.value === null) return undefined;
+    const v = slot.value as Record<string, unknown>;
+    const current = typeof v.status === "string" ? v.status : undefined;
+    if (!current) return undefined;
+    return { stages: EVIDENCE_LADDER, current, reason: typeof v.reason === "string" && v.reason ? v.reason : undefined };
+  };
+
+  const holdings: HoldingRow[] = entities
     .filter((e) => isHeldEntity(e, currentEdges))
-    .map((e) => ({
-      id: e.id,
-      glyph: HOLDING_GLYPH[e.type] ?? "•",
-      label: e.label,
-      note: statusNote(e),
-      details: summaryDetail(e),
-      imageUrl: e.imageUrl,
-    }));
-  const meters: HudRow[] = stateSlots.map((slot) => {
-    const cause = slot.updatedEventId ? outcomeOf.get(slot.updatedEventId) || "" : "";
-    return {
-      id: slot.id,
-      glyph: SLOT_GLYPH[slot.kind] ?? "•",
-      label: slot.label,
-      value: formatValue(slot.value),
-      note: null,
-      details: cause ? [{ label: "因为", text: cause }] : [],
-    };
-  });
+    .map((e) => {
+      const meters = ownedMeters(e.id);
+      const relations = relationsOf(e.id);
+      const lifecycle = lifecycleOf(e.id);
+      const statusPill = lifecycle ? undefined : (statusNote(e) ?? undefined);
+      const isFresh = !!e.createdEventId && e.createdEventId === latestEventId;
+      const changeReason = !isFresh && e.updatedEventId && e.updatedEventId === latestEventId
+        ? (outcomeOf.get(e.updatedEventId) || undefined)
+        : undefined;
+      const summaryText = e.summary?.trim();
+      const summary = summaryText && summaryText !== e.label && summaryText !== e.status ? summaryText : undefined;
+      const preview = meters[0]?.value
+        || (relations[0] ? `${relations[0].type}${relations[0].targetLabel ? `·${relations[0].targetLabel}` : ""}` : undefined)
+        || (lifecycle ? lifecycle.current : statusPill);
+      return {
+        id: e.id, kind: e.type, glyph: HOLDING_GLYPH[e.type] ?? "•", label: e.label,
+        imageUrl: e.imageUrl, summary, preview, statusPill, lifecycle, meters, relations,
+        provenanceTurn: e.createdEventId ? turnOf.get(e.createdEventId) : undefined,
+        isFresh, changeReason,
+      };
+    });
+  const meters: HudRow[] = stateSlots
+    .filter((slot) => !slot.ownerEntityId)
+    .map((slot) => {
+      const cause = slot.updatedEventId ? outcomeOf.get(slot.updatedEventId) || "" : "";
+      return {
+        id: slot.id, glyph: SLOT_GLYPH[slot.kind] ?? "•", label: slot.label,
+        value: meterDisplay(slot.value).text, note: null,
+        details: cause ? [{ label: "因为", text: cause }] : [],
+      };
+    });
   const latestTime = run.currentState?.timeAdvance
     ?? [...events].reverse().find((event) => event.timeAdvance)?.timeAdvance
     ?? null;
@@ -418,7 +487,12 @@ export function PlayHud(props: {
               emptyText={isZh ? "还没有获得物品、证据或线索" : "No items, evidence, or clues yet"}
             >
               {view.holdings.map((row) => (
-                <Row key={row.id} row={row} isZh={isZh} generating={generating.has(row.id)} />
+                <Row
+                  key={row.id}
+                  row={{ id: row.id, glyph: row.glyph, label: row.label, imageUrl: row.imageUrl, value: row.preview, note: row.statusPill ?? null, details: [] }}
+                  isZh={isZh}
+                  generating={generating.has(row.id)}
+                />
               ))}
             </Zone>
 

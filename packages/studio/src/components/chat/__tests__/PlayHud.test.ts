@@ -187,4 +187,99 @@ describe("PlayHud buildView", () => {
 
     expect(buildAutoImageRequests(view, { actors: false, moments: true, inventory: false }, "/scene.png")).toEqual([]);
   });
+
+  it("surfaces a holding's relationship web from its edges, excluding every player edge", () => {
+    const view = buildView({
+      currentState: { turn: 2, mode: "open", premise: "推理。" },
+      graph: {
+        entities: [
+          { id: "evi_letter", type: "evidence", label: "血迹信封", createdEventId: "evt-1" },
+          { id: "actor_chen", type: "actor", label: "陈守仁" },
+          { id: "claim_alibi", type: "claim", label: "不在场证明" },
+        ],
+        edges: [
+          { id: "e-hold", fromId: "actor_player", type: "持有", toId: "evi_letter", value: { role: "holding", physical: true } },
+          // A player→holding relation-role edge must also be kept out of the web.
+          { id: "e-player-rel", fromId: "actor_player", type: "随身", toId: "evi_letter", value: { role: "relation" } },
+          { id: "e-indict", fromId: "evi_letter", type: "指认", toId: "actor_chen", value: { role: "relation" }, strength: 0.8 },
+          { id: "e-refute", fromId: "evi_letter", type: "反驳", toId: "claim_alibi", value: { role: "relation" } },
+        ],
+        stateSlots: [],
+        events: [{ id: "evt-1", turn: 1, outcomeSummary: "" }, { id: "evt-2", turn: 2, outcomeSummary: "" }],
+      },
+    });
+    const letter = view?.holdings.find((h) => h.id === "evi_letter");
+    expect(letter?.relations).toEqual([
+      { targetLabel: "陈守仁", type: "指认", strength: 0.8 },
+      { targetLabel: "不在场证明", type: "反驳", strength: undefined },
+    ]);
+  });
+
+  it("attaches owner-scoped state slots to the holding and keeps unowned slots global", () => {
+    const view = buildView({
+      currentState: { turn: 1, mode: "open", premise: "rpg。" },
+      graph: {
+        entities: [{ id: "item_sword", type: "item", label: "断魂刃", createdEventId: "evt-1" }],
+        edges: [{ id: "e-hold", fromId: "actor_player", type: "持有", toId: "item_sword", value: { role: "holding" } }],
+        stateSlots: [
+          { id: "s-atk", ownerEntityId: "item_sword", kind: "resource", label: "攻击", value: 14 },
+          { id: "s-dur", ownerEntityId: "item_sword", kind: "resource", label: "耐久", value: { current: 62, max: 80 } },
+          { id: "s-world", kind: "pressure", label: "追兵", value: "逼近" },
+        ],
+        events: [{ id: "evt-1", turn: 1, outcomeSummary: "" }],
+      },
+    });
+    const sword = view?.holdings.find((h) => h.id === "item_sword");
+    expect(sword?.meters.map((m) => [m.label, m.value, m.ratio])).toEqual([
+      ["攻击", "14", undefined],
+      ["耐久", "62/80", 0.775],
+    ]);
+    expect(view?.meters.map((m) => m.label)).toEqual(["追兵"]);
+  });
+
+  it("reads the evidence lifecycle ladder and reason from the owner-scoped evidence slot", () => {
+    const view = buildView({
+      currentState: { turn: 3, mode: "guided", premise: "推理。" },
+      graph: {
+        entities: [{ id: "evi_letter", type: "evidence", label: "血迹信封", createdEventId: "evt-1" }],
+        edges: [{ id: "e-hold", fromId: "actor_player", type: "持有", toId: "evi_letter", value: { role: "holding", physical: true } }],
+        stateSlots: [{
+          id: "evidence:evi_letter:status", ownerEntityId: "evi_letter", kind: "evidence", label: "证据状态",
+          value: { previous: "seen", status: "verified", reason: "与账本交叉比对一致" },
+        }],
+        events: [{ id: "evt-1", turn: 1, outcomeSummary: "" }],
+      },
+    });
+    const letter = view?.holdings.find((h) => h.id === "evi_letter");
+    expect(letter?.lifecycle?.current).toBe("verified");
+    expect(letter?.lifecycle?.reason).toBe("与账本交叉比对一致");
+    expect(letter?.lifecycle?.stages).toContain("weaponized");
+    expect(letter?.statusPill).toBeUndefined();
+    expect(letter?.meters).toEqual([]); // the evidence slot is the ladder, not a meter
+  });
+
+  it("marks freshly acquired holdings and records provenance turn", () => {
+    const view = buildView({
+      currentState: { turn: 7, mode: "open", premise: "rpg。" },
+      graph: {
+        entities: [
+          { id: "item_sword", type: "item", label: "断魂刃", status: "已装备", createdEventId: "evt-7", updatedEventId: "evt-7" },
+          { id: "item_key", type: "item", label: "旧钥匙", createdEventId: "evt-2", updatedEventId: "evt-2" },
+        ],
+        edges: [
+          { id: "e1", fromId: "actor_player", type: "持有", toId: "item_sword", value: { role: "holding" } },
+          { id: "e2", fromId: "actor_player", type: "持有", toId: "item_key", value: { role: "holding" } },
+        ],
+        stateSlots: [],
+        events: [{ id: "evt-2", turn: 2, outcomeSummary: "" }, { id: "evt-7", turn: 7, outcomeSummary: "你在熔炉镇锻成此刃。" }],
+      },
+    });
+    const sword = view?.holdings.find((h) => h.id === "item_sword");
+    const key = view?.holdings.find((h) => h.id === "item_key");
+    expect(sword?.isFresh).toBe(true);
+    expect(sword?.provenanceTurn).toBe(7);
+    expect(sword?.statusPill).toBe("已装备");
+    expect(key?.isFresh).toBe(false);
+    expect(key?.provenanceTurn).toBe(2);
+  });
 });
