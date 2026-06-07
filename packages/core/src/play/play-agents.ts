@@ -28,6 +28,7 @@ export interface PlaySceneRenderInput {
   readonly action: PlayActionIntentInput;
   readonly mutationSummary: string;
   readonly stateBrief: string;
+  readonly replayContext?: string;
   readonly language?: "zh" | "en";
   // The world's premise — a persistent anchor so the scene stays in the
   // established era/setting/genre and doesn't drift (a modern shop must not grow
@@ -532,6 +533,7 @@ function buildSceneRendererUserPrompt(input: PlaySceneRenderInput, language: "zh
       "",
       "Current state summary:",
       input.stateBrief,
+      input.replayContext ? ["", "Replay constraints:", input.replayContext].join("\n") : "",
     ].join("\n");
   }
   return [
@@ -547,6 +549,7 @@ function buildSceneRendererUserPrompt(input: PlaySceneRenderInput, language: "zh
     "",
     "当前状态摘要：",
     input.stateBrief,
+    input.replayContext ? ["", "重写约束：", input.replayContext].join("\n") : "",
   ].join("\n");
 }
 

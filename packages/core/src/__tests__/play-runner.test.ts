@@ -624,6 +624,14 @@ describe("PlayRunner", () => {
     await store.writeProjection("regenerate-turn", "main", "projections/scene.md", "末班车还没进站。\n");
 
     let version = "A";
+    const renderInputs: unknown[] = [];
+    const renderReplay = vi.fn(async (input: unknown) => {
+      renderInputs.push(input);
+      return {
+        sceneText: `版本${version}：旧车票从长椅缝里露出一角。`,
+        suggestedActions: [`继续追查版本${version}`],
+      };
+    });
     const runner = new PlayRunner({
       projectRoot: root,
       worldId: "regenerate-turn",
@@ -650,12 +658,7 @@ describe("PlayRunner", () => {
             },
           })),
         },
-        sceneRenderer: {
-          render: vi.fn(async () => ({
-            sceneText: `版本${version}：旧车票从长椅缝里露出一角。`,
-            suggestedActions: [`继续追查版本${version}`],
-          })),
-        },
+        sceneRenderer: { render: renderReplay },
       },
     });
 
@@ -667,6 +670,10 @@ describe("PlayRunner", () => {
     expect(replay.sceneText).toContain("版本B");
     expect(replay.previousVariantId).toBeTruthy();
     expect(replay.variantId).toBeTruthy();
+    const replayRenderInput = renderInputs[1] as { replayContext?: string } | undefined;
+    expect(replayRenderInput?.replayContext).toContain("重写上一回合");
+    expect(replayRenderInput?.replayContext).toContain("不得倒退时间");
+    expect(replayRenderInput?.replayContext).toContain("不要加入玩家没有做的新动作");
     expect(db.events).toHaveLength(1);
     expect(db.entities.has("evidence_ticket_a")).toBe(false);
     expect(db.entities.has("evidence_ticket_b")).toBe(true);

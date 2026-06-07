@@ -44,6 +44,7 @@ export interface PlaySceneRendererLike {
     readonly action: PlayActionIntentInput;
     readonly mutationSummary: string;
     readonly stateBrief: string;
+    readonly replayContext?: string;
     readonly mode?: "open" | "guided";
     readonly language?: "zh" | "en";
     readonly worldPremise?: string;
@@ -170,7 +171,7 @@ export class PlayRunner {
     return { mutation: normalized };
   }
 
-  async step(input: string): Promise<PlayStepResult> {
+  async step(input: string, options: { readonly replayContext?: string } = {}): Promise<PlayStepResult> {
     const rawInput = input.trim();
     if (!rawInput) throw new Error("Play input is empty.");
 
@@ -204,6 +205,7 @@ export class PlayRunner {
       action,
       mutationSummary: mutation.summary || mutation.blockedReason,
       stateBrief,
+      replayContext: options.replayContext,
       mode: world?.mode ?? "open",
       language,
       worldPremise: worldContext,
@@ -297,7 +299,13 @@ export class PlayRunner {
       throw new Error(`Missing checkpoint before turn ${last.turn}; cannot regenerate safely.`);
     }
     await this.store.restoreRunSnapshot(this.options.worldId, this.options.runId, checkpoint, db);
-    const result = await this.step(replayedInput);
+    const result = await this.step(replayedInput, {
+      replayContext: buildReplayContext({
+        originalInput: last.rawInput,
+        replacementInput: input?.trim(),
+        language: (await this.store.loadWorld(this.options.worldId))?.language ?? "zh",
+      }),
+    });
     const nextGraph = readGraphSnapshot(this.db);
     const variantId = nextGraph
       ? await this.store.saveVariant(
@@ -385,6 +393,34 @@ function buildOpeningSeedInput(input: {
         input.suggestedActions.length > 0 ? `建议动作：\n${input.suggestedActions.map((action) => `- ${action}`).join("\n")}` : "",
       ];
   return lines.filter(Boolean).join("\n\n");
+}
+
+function buildReplayContext(input: {
+  readonly originalInput: string;
+  readonly replacementInput?: string;
+  readonly language: "zh" | "en";
+}): string {
+  const replacement = input.replacementInput?.trim();
+  if (input.language === "en") {
+    return [
+      "This is a regeneration of the previous turn, not a new next turn.",
+      `Original player input: ${input.originalInput}`,
+      replacement && replacement !== input.originalInput ? `Replacement instruction from user: ${replacement}` : "",
+      "Keep it as the same player action unless the replacement explicitly changes that action.",
+      "The Current state summary is authoritative, especially the Time section. Do not move the clock backward, invent a different elapsed time, or write another timestamp.",
+      "Do not add new player actions the user did not take. Vary prose, sensory detail, pressure, and emphasis while staying inside the same applied state.",
+      "Concrete new facts, people, objects, locations, or clues must already be present in Applied changes or Current state summary.",
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    "这是在重写上一回合，不是推进新的下一回合。",
+    `原玩家动作：${input.originalInput}`,
+    replacement && replacement !== input.originalInput ? `用户替换说明：${replacement}` : "",
+    "除非替换说明明确改变动作，否则保持同一个玩家动作。",
+    "当前状态摘要是权威，尤其是 Time/时间段：不得倒退时间，不得另写经过时长，也不得写另一个钟点。",
+    "不要加入玩家没有做的新动作。可以换表达、感官细节、压迫和侧重点，但必须留在同一份已应用状态里。",
+    "具体新事实、人物、物件、地点或线索必须已经出现在已应用变化或当前状态摘要中。",
+  ].filter(Boolean).join("\n");
 }
 
 function renderPlayWorldContext(world: PlayWorld | null | undefined, language: "zh" | "en"): string {
