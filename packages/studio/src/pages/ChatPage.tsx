@@ -22,7 +22,7 @@ import { QuickActions } from "../components/chat/QuickActions";
 import { ToolExecutionSteps, type ProposedActionDetails } from "../components/chat/ToolExecutionSteps";
 import { PlayHud } from "../components/chat/PlayHud";
 import { PlayChoicePanel } from "../components/chat/PlayChoicePanel";
-import { latestPlayChoices } from "../components/chat/play-choices";
+import { latestPlayChoiceSet } from "../components/chat/play-choices";
 import {
   Loader2,
   BotMessageSquare,
@@ -46,6 +46,7 @@ import {
   pickModelSelection,
   setBookCreateSessionId,
   setProjectChatSessionId,
+  shouldShowPlayChoicePanel,
 } from "./chat-page-state";
 
 // -- Types --
@@ -123,11 +124,18 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
   // Even in 点着玩 the world is shaped by free typing first; the choice panel
   // only replaces the input once play has actually started (a play tool
   // produced choices).
-  const playChoices = useMemo(
-    () => (currentSessionKind === "play" && playMode === "guided" ? latestPlayChoices(messages) : []),
+  const playChoiceSet = useMemo(
+    () => (currentSessionKind === "play" && playMode === "guided" ? latestPlayChoiceSet(messages) : null),
     [currentSessionKind, playMode, messages],
   );
-  const showChoicePanel = playMode === "guided" && playChoices.length > 0;
+  const [consumedPlayChoiceKey, setConsumedPlayChoiceKey] = useState<string | null>(null);
+  const playChoices = playChoiceSet?.choices ?? [];
+  const showChoicePanel = shouldShowPlayChoicePanel({
+    playMode,
+    choiceSetKey: playChoiceSet?.key ?? null,
+    consumedChoiceKey: consumedPlayChoiceKey,
+    choiceCount: playChoices.length,
+  });
   // World panel (holdings / state / relations) defaults collapsed; the scene
   // image and choices live in the chat center now, opened on demand.
   const [worldPanelOpen, setWorldPanelOpen] = useState(false);
@@ -606,7 +614,9 @@ export function ChatPage({ activeBookId, mode = activeBookId ? "book" : "book-cr
             disabled={loading || !activeSessionId}
             isZh={isZh}
             onChoose={(action) => {
-              if (activeSessionId) void sendMessage(activeSessionId, action, { activeBookId, sessionKind: "play", actionSource: "button" });
+              if (!activeSessionId || !playChoiceSet) return;
+              setConsumedPlayChoiceKey(playChoiceSet.key);
+              void sendMessage(activeSessionId, action, { activeBookId, sessionKind: "play", actionSource: "button" });
             }}
           />
         </div>

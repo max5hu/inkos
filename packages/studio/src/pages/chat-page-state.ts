@@ -117,3 +117,15 @@ export function pickProjectChatSessionId(
     ?? projectSurfaceSessions[0]?.sessionId
     ?? null;
 }
+
+export function shouldShowPlayChoicePanel(input: {
+  readonly playMode?: string | null;
+  readonly choiceSetKey?: string | null;
+  readonly consumedChoiceKey?: string | null;
+  readonly choiceCount: number;
+}): boolean {
+  if (input.playMode !== "guided") return false;
+  if (!input.choiceSetKey) return false;
+  if (input.choiceCount <= 0) return false;
+  return input.choiceSetKey !== input.consumedChoiceKey;
+}

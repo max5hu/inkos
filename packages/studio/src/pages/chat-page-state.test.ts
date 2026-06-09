@@ -8,6 +8,7 @@ import {
   pickProjectChatSessionId,
   setBookCreateSessionId,
   setProjectChatSessionId,
+  shouldShowPlayChoicePanel,
 } from "./chat-page-state";
 
 describe("book-create session localStorage helpers", () => {
@@ -209,5 +210,24 @@ describe("pickProjectChatSessionId", () => {
 
   it("returns null when there is no project chat session", () => {
     expect(pickProjectChatSessionId([])).toBeNull();
+  });
+});
+
+describe("shouldShowPlayChoicePanel", () => {
+  it("does not show choices outside guided Play mode", () => {
+    expect(shouldShowPlayChoicePanel({ playMode: "open", choiceSetKey: "a", consumedChoiceKey: null, choiceCount: 2 })).toBe(false);
+    expect(shouldShowPlayChoicePanel({ playMode: undefined, choiceSetKey: "a", consumedChoiceKey: null, choiceCount: 2 })).toBe(false);
+  });
+
+  it("shows a fresh guided choice set", () => {
+    expect(shouldShowPlayChoicePanel({ playMode: "guided", choiceSetKey: "turn-1", consumedChoiceKey: null, choiceCount: 2 })).toBe(true);
+  });
+
+  it("hides a guided choice set after it has been consumed", () => {
+    expect(shouldShowPlayChoicePanel({ playMode: "guided", choiceSetKey: "turn-1", consumedChoiceKey: "turn-1", choiceCount: 2 })).toBe(false);
+  });
+
+  it("shows choices again when a new tool result creates a new source key", () => {
+    expect(shouldShowPlayChoicePanel({ playMode: "guided", choiceSetKey: "turn-2", consumedChoiceKey: "turn-1", choiceCount: 2 })).toBe(true);
   });
 });
