@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { ToolExecution } from "../../../store/chat/types";
-import { getGeneratedArtifactDetails, getPlayEditDetails, getPlayToolDetails, getProposedActionContractRows, getProposedActionDetails, groupToolExecutionsChronologically } from "../ToolExecutionSteps";
+import { ToolExecutionSteps, buildPlayRunStatusUrl, buildPlaySceneImageUrl, getGeneratedArtifactDetails, getPlayEditDetails, getPlayToolDetails, getProposedActionContractRows, getProposedActionDetails, groupToolExecutionsChronologically } from "../ToolExecutionSteps";
 
 const makeExec = (overrides: Partial<ToolExecution> & { id: string; tool: string }): ToolExecution => ({
   label: "test",
@@ -212,6 +214,43 @@ describe("groupChronologically", () => {
       suggestedActions: ["取出红印", "合上账本"],
       variantId: "v-new",
     });
+  });
+
+  it("does not render suggested play actions as non-clickable text in the result card", () => {
+    const html = renderToStaticMarkup(React.createElement(ToolExecutionSteps, {
+      executions: [
+        makeExec({
+          id: "play-choices-1",
+          tool: "play_step",
+          label: "推进互动世界",
+          details: {
+            kind: "play_turn_advanced",
+            worldId: "rain-teahouse",
+            runId: "main",
+            sceneText: "你翻开账本，发现一张旧船票。",
+            suggestedActions: ["藏起船票", "追问来人"],
+            currentState: { turn: 3 },
+          },
+        }),
+      ],
+    }));
+
+    expect(html).toContain("你翻开账本");
+    expect(html).not.toContain("藏起船票");
+    expect(html).not.toContain("追问来人");
+  });
+
+  it("does not guess a scene image file path before the run manifest reports it ready", () => {
+    const details = {
+      kind: "play_turn_advanced" as const,
+      worldId: "rain-teahouse",
+      runId: "main",
+      turn: 3,
+      sceneText: "你翻开账本。",
+    };
+
+    expect(buildPlaySceneImageUrl(details)).toBeNull();
+    expect(buildPlayRunStatusUrl(details)).toBe("/api/v1/play/runs/rain-teahouse/main");
   });
 
   it("extracts play edit details", () => {

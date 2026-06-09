@@ -32,6 +32,7 @@ const resolveSessionActiveBookMock = vi.fn();
 const runAgentSessionMock = vi.fn();
 const playRunnerStepMock = vi.fn();
 const playRunnerCtorArgs: unknown[] = [];
+const generatePlayImageMock = vi.fn();
 const createAndPersistBookSessionMock = vi.fn();
 const loadBookSessionMock = vi.fn();
 const persistBookSessionMock = vi.fn();
@@ -132,6 +133,7 @@ const logger = {
 
 vi.mock("@actalk/inkos-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@actalk/inkos-core")>();
+  generatePlayImageMock.mockImplementation(actual.generatePlayImage);
 
   class MockSessionAlreadyMigratedError extends Error {
     constructor(message = "Session already migrated") {
@@ -257,7 +259,7 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     createPlayDB: actual.createPlayDB,
     buildPlayEntityImagePrompt: actual.buildPlayEntityImagePrompt,
     buildPlaySceneImagePrompt: actual.buildPlaySceneImagePrompt,
-    generatePlayImage: actual.generatePlayImage,
+    generatePlayImage: generatePlayImageMock,
     readPlayImageManifest: actual.readPlayImageManifest,
     readPlayImageSettings: actual.readPlayImageSettings,
     writePlayImageSettings: actual.writePlayImageSettings,
@@ -379,6 +381,7 @@ describe("createStudioServer daemon lifecycle", () => {
     saveChapterIndexMock.mockReset();
     loadChapterIndexMock.mockReset();
     loadBookConfigMock.mockReset();
+    generatePlayImageMock.mockClear();
     await mkdir(join(root, "books", "demo-book", "chapters"), { recursive: true });
     await writeFile(join(root, "books", "demo-book", "chapters", "0003_Demo.md"), "# Demo\n\nBody", "utf-8");
     runRadarMock.mockResolvedValue({
@@ -3986,6 +3989,29 @@ describe("createStudioServer daemon lifecycle", () => {
     });
   });
 
+  it("exposes ready Play scene images from the manifest without requiring direct file probing", async () => {
+    await mkdir(join(root, "worlds", "img-world", "runs", "run-1", "images"), { recursive: true });
+    await writeFile(join(root, "worlds", "img-world", "runs", "run-1", "images", "manifest.json"), JSON.stringify({
+      "scene-turn-0": { status: "ready", file: "scene-turn-0.png" },
+      "scene-turn-3": { status: "ready", file: "scene-turn-3.png" },
+      "scene-turn-4": { status: "failed", error: "provider unavailable" },
+      actor_player: { status: "ready", file: "actor_player.png" },
+    }, null, 2), "utf-8");
+
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+    const run = await app.request("http://localhost/api/v1/play/runs/img-world/run-1");
+
+    expect(run.status).toBe(200);
+    await expect(run.json()).resolves.toMatchObject({
+      sceneImageUrl: "/api/v1/play/runs/img-world/run-1/images/scene-turn-0.png",
+      sceneImageUrls: {
+        "scene-turn-0": "/api/v1/play/runs/img-world/run-1/images/scene-turn-0.png",
+        "scene-turn-3": "/api/v1/play/runs/img-world/run-1/images/scene-turn-3.png",
+      },
+    });
+  });
+
   it("validates generate-image input before doing any work", async () => {
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
@@ -4001,6 +4027,27 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({ target: "scene" }),
     });
     expect(noScene.status).toBe(400);
+  });
+
+  it("returns Play image generation failures as non-fatal manifest status instead of a network error", async () => {
+    generatePlayImageMock.mockResolvedValueOnce({ status: "failed", error: "provider unavailable" });
+    await mkdir(join(root, "worlds", "img-world", "runs", "run-1", "projections"), { recursive: true });
+    await writeFile(join(root, "worlds", "img-world", "runs", "run-1", "projections", "scene.md"), "雨夜里，侦探站在冷库门口。", "utf-8");
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const res = await app.request("http://localhost/api/v1/play/runs/img-world/run-1/generate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: "scene" }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      key: "scene-turn-0",
+      status: "failed",
+      error: "provider unavailable",
+    });
   });
 
   it("rejects path traversal when serving Play images", async () => {

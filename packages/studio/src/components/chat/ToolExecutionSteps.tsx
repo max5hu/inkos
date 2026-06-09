@@ -256,55 +256,77 @@ export function getPlayToolDetails(exec: ToolExecution): PlayToolDetails | null 
   };
 }
 
-function buildPlaySceneImageUrl(details: PlayToolDetails): string | null {
+type PlayRunImageIndex = {
+  readonly sceneImageUrls?: Record<string, string>;
+  readonly sceneImageUrl?: string;
+};
+
+function sceneImageKey(details: PlayToolDetails): string | null {
+  return details.turn == null ? null : `scene-turn-${Math.trunc(details.turn)}`;
+}
+
+export function buildPlaySceneImageUrl(details: PlayToolDetails, run?: PlayRunImageIndex | null): string | null {
   if (details.sceneImageUrl) {
     return buildApiUrl(details.sceneImageUrl);
   }
+  const key = sceneImageKey(details);
+  const fromIndex = key ? run?.sceneImageUrls?.[key] : undefined;
+  if (fromIndex) return buildApiUrl(fromIndex);
+  if (key === "scene-turn-0" && run?.sceneImageUrl) return buildApiUrl(run.sceneImageUrl);
+  return null;
+}
+
+export function buildPlayRunStatusUrl(details: PlayToolDetails): string | null {
   if (!details.worldId || !details.runId || details.turn == null) return null;
-  const file = `scene-turn-${Math.trunc(details.turn)}.png`;
   return buildApiUrl(
-    `/play/runs/${encodeURIComponent(details.worldId)}/${encodeURIComponent(details.runId)}/images/${encodeURIComponent(file)}`,
+    `/play/runs/${encodeURIComponent(details.worldId)}/${encodeURIComponent(details.runId)}`,
   );
 }
 
-function withCacheBust(url: string, attempt: number): string {
-  const joiner = url.includes("?") ? "&" : "?";
-  return `${url}${joiner}v=${attempt}`;
-}
-
 function PlaySceneImagePreview({ details }: { details: PlayToolDetails }) {
-  const url = useMemo(() => buildPlaySceneImageUrl(details), [details]);
+  const runUrl = useMemo(() => buildPlayRunStatusUrl(details), [details]);
+  const directUrl = useMemo(() => buildPlaySceneImageUrl(details), [details]);
   const [readyUrl, setReadyUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setReadyUrl(null);
-    if (!url) return;
+    if (directUrl) {
+      setReadyUrl(directUrl);
+      return;
+    }
+    if (!runUrl) return;
     let cancelled = false;
     let timer: number | undefined;
     let attempt = 0;
     const maxAttempts = 40;
 
-    const probe = () => {
-      const image = new Image();
-      image.onload = () => {
-        if (!cancelled) setReadyUrl(url);
-      };
-      image.onerror = () => {
-        if (cancelled) return;
-        attempt += 1;
-        if (attempt < maxAttempts) {
-          timer = window.setTimeout(probe, 2000);
+    const probe = async () => {
+      try {
+        const response = await fetch(runUrl);
+        if (response.ok) {
+          const data = await response.json() as PlayRunImageIndex;
+          const url = buildPlaySceneImageUrl(details, data);
+          if (url && !cancelled) {
+            setReadyUrl(url);
+            return;
+          }
         }
-      };
-      image.src = withCacheBust(url, attempt);
+      } catch {
+        // The run may not exist yet, or the image may still be generating.
+      }
+      if (cancelled) return;
+      attempt += 1;
+      if (attempt < maxAttempts) {
+        timer = window.setTimeout(() => void probe(), 2000);
+      }
     };
 
-    probe();
+    void probe();
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [url]);
+  }, [details, directUrl, runUrl]);
 
   if (!readyUrl) return null;
 
@@ -464,15 +486,6 @@ function PlayResultPreview({ exec }: { exec: ToolExecution }) {
       </div>
       <div className="whitespace-pre-wrap text-base leading-7 text-foreground">{details.sceneText}</div>
       <PlaySceneImagePreview details={details} />
-      {details.suggestedActions && details.suggestedActions.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {details.suggestedActions.slice(0, 4).map((action) => (
-            <span key={action} className="rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-[15px] leading-6 text-muted-foreground">
-              {action}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

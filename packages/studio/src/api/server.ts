@@ -2962,6 +2962,11 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     ]);
     const imageUrlFor = (file?: string): string | undefined =>
       file ? `/api/v1/play/runs/${encodeURIComponent(worldId)}/${encodeURIComponent(runId)}/images/${encodeURIComponent(file)}` : undefined;
+    const sceneImageUrls = Object.fromEntries(
+      Object.entries(manifest)
+        .filter(([key, entry]) => key.startsWith("scene-turn-") && entry.status === "ready" && entry.file)
+        .map(([key, entry]) => [key, imageUrlFor(entry.file)]),
+    );
     const entitiesWithImages = (graph.entities ?? []).map((entity: { id: string }) => {
       const entry = manifest[entity.id];
       return entry?.status === "ready" && entry.file
@@ -2982,6 +2987,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       currentState,
       graph: { ...graph, entities: entitiesWithImages },
       imageSettings,
+      sceneImageUrls,
       ...(sceneImageUrl ? { sceneImageUrl } : {}),
     });
   });
@@ -3058,7 +3064,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const url = entry.status === "ready" && entry.file
         ? `/api/v1/play/runs/${encodeURIComponent(worldId)}/${encodeURIComponent(runId)}/images/${encodeURIComponent(entry.file)}`
         : undefined;
-      return c.json({ key, ...entry, ...(url ? { url } : {}) }, entry.status === "ready" ? 200 : 502);
+      return c.json({ key, ok: entry.status === "ready", ...entry, ...(url ? { url } : {}) });
     } catch (e) {
       // Resolution failure = cover API not configured.
       return c.json({ error: e instanceof Error ? e.message : String(e), needsCoverConfig: true }, 400);
