@@ -19,7 +19,7 @@
     <img alt="Kimi Open Source Friends" width="420" src="https://kimi-file.moonshot.cn/prod-chat-kimi/kfs/4/1/2026-06-05/1d8h69fudcmosb3pipls0">
   </picture>
   <br>
-  <sub>InkOS 成为首批 KIMI 开源合作伙伴</sub>
+  🎉🎉 InkOS 入选首批 KIMI 开源合作伙伴 🎉🎉
 </p>
 
 <p align="center">
