@@ -239,8 +239,8 @@ function resolveProjectImageFile(root: string, rawPath: string): { readonly reso
   ) {
     throw new ApiError(400, "INVALID_PROJECT_FILE_PATH", "Invalid project file path");
   }
-  if (!relPath.startsWith("shorts/") && !relPath.startsWith("covers/")) {
-    throw new ApiError(400, "INVALID_PROJECT_FILE_PATH", "Only generated shorts/ and covers/ images can be previewed");
+  if (!relPath.startsWith("shorts/") && !relPath.startsWith("covers/") && !relPath.startsWith("interactive-films/")) {
+    throw new ApiError(400, "INVALID_PROJECT_FILE_PATH", "Only generated shorts/, covers/, interactive-films/ images can be previewed");
   }
 
   const ext = relPath.split(".").pop()?.toLowerCase() ?? "";
