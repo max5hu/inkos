@@ -1,8 +1,8 @@
 import type { StoryGraph, StoryNode } from "./graph-schema.js";
 
 export interface ValidationIssue {
-  readonly code: "DEAD_END" | "BROKEN_LINK" | "UNREACHABLE" | "NO_PATH_TO_ENDING";
-  readonly level: "error" | "warning";
+  readonly code: "DEAD_END" | "BROKEN_LINK" | "UNREACHABLE" | "NO_PATH_TO_ENDING" | "VARIABLE_UNWRITTEN" | "VARIABLE_UNREAD" | "ENDING_VARIETY" | "IMAGE_MISSING";
+  readonly level: "error" | "warning" | "info";
   readonly message: string;
   readonly nodeIds: readonly string[];
 }
@@ -90,6 +90,66 @@ export function validateStoryGraph(graph: StoryGraph): ValidationReport {
         level: "error",
         message: `从开场节点「${label(start)}」出发无法到达任何结局`,
         nodeIds: [start.id],
+      });
+    }
+  }
+
+  return { ok: issues.every((i) => i.level !== "error"), issues };
+}
+
+export function reviewStoryGraph(graph: StoryGraph): ValidationReport {
+  const issues: ValidationIssue[] = [...validateStoryGraph(graph).issues];
+
+  const reads = new Set<string>();
+  const writes = new Set<string>();
+  for (const node of graph.nodes) {
+    for (const choice of node.choices) {
+      if (choice.condition) reads.add(choice.condition.var);
+      for (const effect of choice.effects) writes.add(effect.var);
+    }
+  }
+  const definedOrWritten = new Set<string>([...graph.variables.map((v) => v.name), ...writes]);
+
+  for (const v of reads) {
+    if (!writes.has(v)) {
+      issues.push({
+        code: "VARIABLE_UNWRITTEN",
+        level: "warning",
+        message: `变量「${v}」被选项条件读取，但没有任何选项写入它——该条件门除默认值外永远不会改变`,
+        nodeIds: [],
+      });
+    }
+  }
+  for (const v of definedOrWritten) {
+    if (!reads.has(v)) {
+      issues.push({
+        code: "VARIABLE_UNREAD",
+        level: "info",
+        message: `变量「${v}」定义或写入了，但没有任何条件读取它——对分支没有影响`,
+        nodeIds: [],
+      });
+    }
+  }
+
+  if (graph.endings.length >= 2) {
+    const types = new Set(graph.endings.map((e) => e.type));
+    if (types.size === 1) {
+      issues.push({
+        code: "ENDING_VARIETY",
+        level: "info",
+        message: `${graph.endings.length} 个结局都是同一类型（${[...types][0]}），重玩价值低——考虑设计不同基调的结局`,
+        nodeIds: graph.endings.map((e) => e.nodeId),
+      });
+    }
+  }
+
+  for (const node of graph.nodes) {
+    if (node.type !== "ending" && !node.imageSlot?.assetRef) {
+      issues.push({
+        code: "IMAGE_MISSING",
+        level: "info",
+        message: `节点「${node.title || node.id}」还没有配图`,
+        nodeIds: [node.id],
       });
     }
   }

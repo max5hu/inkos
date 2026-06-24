@@ -527,6 +527,7 @@ export {
 } from "./interactive-film/evaluator.js";
 export {
   validateStoryGraph,
+  reviewStoryGraph,
   type ValidationReport,
   type ValidationIssue,
 } from "./interactive-film/validation.js";
