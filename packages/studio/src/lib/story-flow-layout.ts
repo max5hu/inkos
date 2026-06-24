@@ -53,7 +53,7 @@ export function layoutStoryGraph(graph: StoryGraph): { nodes: FlowNode[]; edges:
     rowByDepth.set(d, row + 1);
     return {
       id: node.id,
-      position: { x: d * COL, y: row * ROW },
+      position: node.position ?? { x: d * COL, y: row * ROW },
       data: { label: node.title || node.id, nodeType: node.type },
       type: "story",
     };
