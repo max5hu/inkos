@@ -1,19 +1,23 @@
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   Handle,
   Position,
+  useNodesState,
+  useEdgesState,
   type NodeProps,
   type Node,
+  type NodeDragHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useApi } from "../hooks/use-api";
+import { useApi, fetchJson } from "../hooks/use-api";
 import { useColors } from "../hooks/use-colors";
 import type { Theme } from "../hooks/use-theme";
 import type { TFunction } from "../hooks/use-i18n";
 import { layoutStoryGraph } from "../lib/story-flow-layout";
+import { moveNodeDelta, addNodeDelta, genNodeId } from "../lib/story-editor-deltas";
 import type { StoryGraph } from "@actalk/inkos-core/interactive-film/graph-schema";
 
 interface Nav {
@@ -63,13 +67,55 @@ export default function FlowView({
   t: TFunction;
 }) {
   const c = useColors(theme);
-  const { data: graph, loading, error } = useApi<StoryGraph>(
+  const { data: graph, loading, error, refetch } = useApi<StoryGraph>(
     `/projects/${projectId}/story-graph`,
   );
-  const { nodes, edges } = useMemo(
-    () => (graph ? layoutStoryGraph(graph) : { nodes: [], edges: [] }),
-    [graph],
-  );
+
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<StoryNode>([]);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Re-seed controlled state whenever graph data changes (e.g. after refetch)
+  useEffect(() => {
+    if (!graph) return;
+    const layout = layoutStoryGraph(graph);
+    setRfNodes(layout.nodes as StoryNode[]);
+    setRfEdges(layout.edges);
+  }, [graph, setRfNodes, setRfEdges]);
+
+  const post = async (body: { delta: unknown }) => {
+    setEditError(null);
+    try {
+      await fetchJson(`/projects/${projectId}/story-graph/delta`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await refetch();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onNodeDragStop: NodeDragHandler = async (_evt, node) => {
+    if (!editing || !graph) return;
+    const orig = graph.nodes.find((g) => g.id === node.id);
+    if (!orig) return;
+    await post(moveNodeDelta(orig, Math.round(node.position.x), Math.round(node.position.y)));
+  };
+
+  const onAddNode = async () => {
+    await post(
+      addNodeDelta({
+        id: genNodeId(),
+        type: "normal",
+        title: "新节点",
+        choices: [],
+        position: { x: 80, y: 80 },
+      } as never),
+    );
+  };
 
   if (loading) return <div className={c.muted}>{t("common.loading")}</div>;
   if (error)
@@ -91,17 +137,41 @@ export default function FlowView({
           ← {t("bread.film")}
         </button>
         <span data-testid="flow-title">{graph.title || projectId}</span>
+        <button
+          data-testid="flow-edit-toggle"
+          onClick={() => setEditing((v) => !v)}
+          className="ml-auto px-3 py-1 rounded border text-xs"
+        >
+          {editing ? "完成编辑" : "编辑"}
+        </button>
+        {editing && (
+          <button
+            data-testid="flow-add-node"
+            onClick={onAddNode}
+            className="px-3 py-1 rounded border text-xs"
+          >
+            加节点
+          </button>
+        )}
       </div>
+      {editError && (
+        <div data-testid="flow-edit-error" className="text-red-400 text-xs">
+          {editError}
+        </div>
+      )}
       <div style={{ height: "70vh" }} className="border rounded">
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={rfNodes}
+          edges={rfEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           fitView
           colorMode={theme === "dark" ? "dark" : "light"}
-          nodesDraggable={false}
+          nodesDraggable={editing}
           nodesConnectable={false}
-          elementsSelectable={false}
+          elementsSelectable={editing}
+          onNodeDragStop={onNodeDragStop}
         >
           <Background />
           <Controls />
