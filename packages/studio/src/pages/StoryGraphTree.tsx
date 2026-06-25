@@ -84,21 +84,21 @@ export function StoryGraphTree({
         <span data-testid="film-title">{graph.title || projectId}</span>
         <button
           onClick={() => nav.toPlay(projectId)}
-          className="ml-auto px-3 py-1 rounded bg-amber-500 text-white"
+          className={`ml-auto px-3 py-1 rounded ${c.btnPrimary}`}
           data-testid="film-play"
         >
           试玩 →
         </button>
         <button
           onClick={() => nav.toFlow(projectId)}
-          className="px-3 py-1 rounded bg-blue-600 text-white"
+          className={`px-3 py-1 rounded ${c.btnSecondary}`}
           data-testid="open-flow"
         >
           流程图 →
         </button>
         <button
           onClick={() => nav.toFilmAuthor(projectId)}
-          className="px-3 py-1 rounded bg-emerald-600 text-white"
+          className={`px-3 py-1 rounded ${c.btnSecondary}`}
           data-testid="open-authoring"
         >
           AI 对话创作 →
@@ -187,7 +187,7 @@ function NodeEditor({
   return (
     <div className="border rounded p-3" data-testid={`film-node-${node.id}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
-        <span className="px-1.5 py-0.5 rounded bg-slate-200 text-xs">{node.type}</span>
+        <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-xs">{node.type}</span>
         <span>{node.title || node.id}</span>
       </div>
       {node.imageSlot?.assetRef && (
@@ -220,7 +220,7 @@ function NodeEditor({
           data-testid={`film-save-${node.id}`}
           disabled={!dirty || saving}
           onClick={() => onSave({ ...node, sceneDesc: scene })}
-          className="px-3 py-1 text-xs rounded bg-slate-700 text-white disabled:opacity-40"
+          className={`px-3 py-1 text-xs rounded ${colors.btnPrimary} disabled:opacity-40`}
         >
           {saving ? "保存中…" : "保存"}
         </button>
@@ -228,7 +228,7 @@ function NodeEditor({
           data-testid={`gen-image-${node.id}`}
           disabled={generating}
           onClick={() => onGenerateImage(node.id)}
-          className="px-3 py-1 text-xs rounded bg-violet-600 text-white disabled:opacity-40"
+          className={`px-3 py-1 text-xs rounded ${colors.btnSecondary} disabled:opacity-40`}
         >
           {generating ? "生成中…" : "生成配图"}
         </button>

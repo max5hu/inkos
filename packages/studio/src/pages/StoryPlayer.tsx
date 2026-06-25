@@ -51,7 +51,7 @@ export function StoryPlayer({
         <button
           onClick={reset}
           data-testid="player-start"
-          className="px-6 py-3 rounded-lg bg-amber-500 text-white hover:bg-amber-400"
+          className={`px-6 py-3 rounded-lg ${c.btnPrimary}`}
         >开始游玩</button>
       </div>
     );
@@ -111,7 +111,7 @@ export function StoryPlayer({
           <div className={c.muted} data-testid="player-unlocked">
             已解锁结局 {unlocked.length} / {graph.endings.length}
           </div>
-          <button onClick={reset} data-testid="player-restart" className="px-5 py-2 rounded bg-slate-700 text-white">
+          <button onClick={reset} data-testid="player-restart" className={`px-5 py-2 rounded ${c.btnSecondary}`}>
             重新开始
           </button>
         </div>
@@ -122,7 +122,7 @@ export function StoryPlayer({
               key={choice.id}
               data-testid={`choice-${choice.id}`}
               onClick={() => onChoose(choice.targetNodeId, choice.effects)}
-              className="w-full text-left px-5 py-4 border rounded-xl hover:bg-slate-50"
+              className="w-full text-left px-5 py-4 border border-border rounded-xl hover:bg-muted/40 transition-colors"
             >
               {choice.text}
             </button>

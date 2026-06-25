@@ -31,12 +31,12 @@ type StoryNode = Node<{ label: string; nodeType: string }, "story">;
 type StoryEdge = Edge;
 
 const TYPE_COLOR: Record<string, string> = {
-  start: "bg-emerald-100 border-emerald-400",
-  branch: "bg-amber-100 border-amber-400",
-  ending: "bg-rose-100 border-rose-400",
-  merge: "bg-sky-100 border-sky-400",
-  explore: "bg-violet-100 border-violet-400",
-  normal: "bg-slate-100 border-slate-300",
+  start: "bg-emerald-500/15 border-emerald-500/50",
+  branch: "bg-amber-500/15 border-amber-500/50",
+  ending: "bg-rose-500/15 border-rose-500/50",
+  merge: "bg-sky-500/15 border-sky-500/50",
+  explore: "bg-violet-500/15 border-violet-500/50",
+  normal: "bg-muted border-border",
 };
 
 function StoryFlowNode({ id, data }: NodeProps<StoryNode>) {
@@ -44,11 +44,11 @@ function StoryFlowNode({ id, data }: NodeProps<StoryNode>) {
   return (
     <div
       data-testid={`flow-node-${id}`}
-      className={`px-3 py-2 rounded border text-xs ${cls}`}
+      className={`px-3 py-2 rounded border text-xs text-foreground ${cls}`}
     >
       <Handle type="target" position={Position.Left} />
       <div className="font-medium">{data.label}</div>
-      <div className="opacity-60">{data.nodeType}</div>
+      <div className="opacity-60 text-xs">{data.nodeType}</div>
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -172,7 +172,7 @@ export default function FlowView({
         <button
           data-testid="flow-edit-toggle"
           onClick={() => setEditing((v) => !v)}
-          className="ml-auto px-3 py-1 rounded border text-xs"
+          className={`ml-auto px-3 py-1 rounded text-xs ${c.btnSecondary}`}
         >
           {editing ? "完成编辑" : "编辑"}
         </button>
@@ -180,7 +180,7 @@ export default function FlowView({
           <button
             data-testid="flow-add-node"
             onClick={onAddNode}
-            className="px-3 py-1 rounded border text-xs"
+            className={`px-3 py-1 rounded text-xs ${c.btnSecondary}`}
           >
             加节点
           </button>
