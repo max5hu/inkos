@@ -54,4 +54,49 @@ describe("enumerateRuntimePaths", () => {
     expect(paths.some((p) => p.endingId === "g1")).toBe(true);
     expect(paths.length).toBeLessThanOrEqual(50);
   });
+
+  it("sets truncated=true and returns exactly 1 path when maxPaths=1 and graph has 2 reachable endings", () => {
+    const graph = g({
+      nodes: [
+        { id: "s", type: "start", choices: [
+          { id: "a", text: "A", targetNodeId: "e1" },
+          { id: "b", text: "B", targetNodeId: "e2" },
+        ] },
+        { id: "e1", type: "ending", choices: [] },
+        { id: "e2", type: "ending", choices: [] },
+      ],
+      endings: [
+        { id: "g1", nodeId: "e1", title: "好", type: "good" },
+        { id: "b1", nodeId: "e2", title: "坏", type: "bad" },
+      ],
+    });
+    const { paths, truncated } = enumerateRuntimePaths(graph, { maxPaths: 1 });
+    expect(truncated).toBe(true);
+    expect(paths.length).toBe(1);
+  });
+
+  it("returns paths=[] and truncated=false when graph has no start node", () => {
+    const graph = g({
+      nodes: [
+        { id: "e1", type: "ending", choices: [] },
+      ],
+      endings: [{ id: "g1", nodeId: "e1", title: "好", type: "good" }],
+    });
+    const { paths, truncated } = enumerateRuntimePaths(graph);
+    expect(paths.length).toBe(0);
+    expect(truncated).toBe(false);
+  });
+
+  it("records a dead-end normal node (no choices, no ending) as a path with endingId=null ending at that node", () => {
+    const graph = g({
+      nodes: [
+        { id: "s", type: "start", choices: [{ id: "a", text: "前进", targetNodeId: "d" }] },
+        { id: "d", type: "normal", choices: [] },
+      ],
+    });
+    const { paths } = enumerateRuntimePaths(graph);
+    const deadEndPath = paths.find((p) => p.endingId === null);
+    expect(deadEndPath).toBeDefined();
+    expect(deadEndPath!.nodeIds.at(-1)).toBe("d");
+  });
 });
