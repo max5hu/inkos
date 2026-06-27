@@ -260,8 +260,8 @@ export default function FlowView({
   if (!graph) return null;
 
   return (
-    <div className="space-y-3" data-testid="flow-view">
-      <div className="flex items-center gap-3 text-sm">
+    <div className="flex flex-col h-full p-5 gap-3" data-testid="flow-view">
+      <div className="flex items-center gap-3 text-sm shrink-0">
         <button
           onClick={() => nav.toFilm(projectId)}
           className={c.link}
@@ -295,7 +295,7 @@ export default function FlowView({
       {stats && (
         <div
           data-testid="flow-stats"
-          className="flex items-center gap-4 text-xs text-muted-foreground border border-border rounded px-3 py-1.5 bg-card"
+          className="flex items-center gap-4 text-xs text-muted-foreground border border-border rounded px-3 py-1.5 bg-card shrink-0"
         >
           <span>总节点 {stats.total}</span>
           <span>分支 {stats.branch}</span>
@@ -317,7 +317,7 @@ export default function FlowView({
           </span>
         </div>
       )}
-      <div style={{ height: "70vh" }} className="border rounded">
+      <div className="flex-1 min-h-0 border rounded">
         <ReactFlow
           nodes={displayNodes}
           edges={displayEdges}
