@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.6.1
+
+### Release Focus
+
+Chat 协作与可调提示词热更新：在 v1.6.0 的互动影游 / Skill 系统基础上，补齐用户上传文件、图片附件、长任务中断、材料归档检索和 Studio 提示词包编辑。核心目标是让 Chat 更像真实创作工作台：能看用户给的材料，能停下长任务，能把外部资料沉淀为可检索参考，也能让用户直接调整关键提示词。
+
+### Improvements
+
+- Studio Chat 支持上传文本 / Markdown / 图片附件；文本材料会进入 LLM 上下文，图片会作为多模态输入传给支持视觉的模型
+- 新增长任务中断能力，用户可在 Chat 中主动停止当前 agent turn，避免长任务卡死后只能刷新
+- 新增材料归档与检索工具：外部材料可保存到项目材料库，并在后续写作 / 讨论中用 evidence trace 检索引用
+- 新增 Studio 提示词包编辑器：在“项目设置 → 提示词”集中查看和调整 longform、Play、互动影游等内置 prompt pack；修改保存为项目级覆盖文件，不改内置默认值
+- Runtime Skill 可继续提供 prompt pack、上下文需求和专业规则；提示词包编辑器让这些规则能被人直接检查和微调
+- 修复 Studio Chat 旧章修订时丢失本轮对话要求的问题：`sub_agent(reviser)` 现在会把用户本轮“重写 / 重修 / 调整方向”的话作为一次性修订 brief 传入长篇管线
+- 修订未落盘时返回更具体的判定信息：展示修订前后 blocking / critical / AI-tell 指标、应用标准和剩余问题，不再只返回笼统的 “kept original chapter”
+- 调整疑似章节正文未落盘兜底：不再默认引导“写下一章”，并避免把“第 N 章修改指令 / 重写方案”误判成正文
+
+### Verification Notes
+
+- 真实模型验收：`kkaiapi / deepseek-v4-flash` 能在回答中返回上传 Markdown 的唯一暗号，证明文档内容进入 LLM 上下文
+- 真实模型验收：`kkaiapi / gpt-5.5` 能识别上传 PNG 的主体颜色，证明图片附件进入多模态输入链路
+
 ## v1.6.0
 
 ### Release Focus
