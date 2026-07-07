@@ -1,3 +1,5 @@
+import type { NotifyFormat } from "./format.js";
+
 export interface TelegramConfig {
   readonly botToken: string;
   readonly chatId: string;
@@ -6,6 +8,7 @@ export interface TelegramConfig {
 export async function sendTelegram(
   config: TelegramConfig,
   message: string,
+  format: NotifyFormat = "markdown",
 ): Promise<void> {
   const url = `https://api.telegram.org/bot${config.botToken}/sendMessage`;
   const response = await fetch(url, {
@@ -14,7 +17,8 @@ export async function sendTelegram(
     body: JSON.stringify({
       chat_id: config.chatId,
       text: message,
-      parse_mode: "Markdown",
+      // Plain-text mode: omit parse_mode so Telegram renders the message as-is.
+      ...(format === "markdown" ? { parse_mode: "Markdown" } : {}),
     }),
   });
 

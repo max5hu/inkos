@@ -1,4 +1,5 @@
 import type { NotifyChannel } from "../models/project.js";
+import { stripMarkdownMarks } from "./format.js";
 import type { WebhookPayload } from "./webhook.js";
 
 export interface NotifyMessage {
@@ -10,7 +11,9 @@ export async function dispatchNotification(
   channels: ReadonlyArray<NotifyChannel>,
   message: NotifyMessage,
 ): Promise<void> {
-  const fullText = `**${message.title}**\n\n${message.body}`;
+  const markdownText = `**${message.title}**\n\n${message.body}`;
+  const plainBody = stripMarkdownMarks(message.body);
+  const plainText = `${message.title}\n\n${plainBody}`;
 
   const tasks = channels.map(async (channel) => {
     try {
@@ -20,7 +23,8 @@ export async function dispatchNotification(
             const { sendTelegram } = await import("./telegram.js");
             await sendTelegram(
               { botToken: channel.botToken, chatId: channel.chatId },
-              fullText,
+              channel.format === "text" ? plainText : markdownText,
+              channel.format,
             );
           }
           break;
@@ -30,7 +34,8 @@ export async function dispatchNotification(
             await sendFeishu(
               { webhookUrl: channel.webhookUrl },
               message.title,
-              message.body,
+              channel.format === "text" ? plainBody : message.body,
+              channel.format,
             );
           }
           break;
@@ -39,7 +44,8 @@ export async function dispatchNotification(
             const { sendWechatWork } = await import("./wechat-work.js");
             await sendWechatWork(
               { webhookUrl: channel.webhookUrl },
-              fullText,
+              channel.format === "text" ? plainText : markdownText,
+              channel.format,
             );
           }
           break;
@@ -54,7 +60,7 @@ export async function dispatchNotification(
                 event: "pipeline-complete",
                 bookId: "",
                 timestamp: new Date().toISOString(),
-                data: { title: message.title, body: message.body },
+                data: { title: message.title, body: message.body, format: channel.format },
               },
             );
           }

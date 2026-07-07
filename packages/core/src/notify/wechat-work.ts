@@ -1,3 +1,5 @@
+import type { NotifyFormat } from "./format.js";
+
 export interface WechatWorkConfig {
   readonly webhookUrl: string;
 }
@@ -5,14 +7,15 @@ export interface WechatWorkConfig {
 export async function sendWechatWork(
   config: WechatWorkConfig,
   content: string,
+  format: NotifyFormat = "markdown",
 ): Promise<void> {
+  const payload = format === "text"
+    ? { msgtype: "text", text: { content } }
+    : { msgtype: "markdown", markdown: { content } };
   const response = await fetch(config.webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      msgtype: "markdown",
-      markdown: { content },
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

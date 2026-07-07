@@ -44,20 +44,24 @@ export const NotifyChannelSchema = z.discriminatedUnion("type", [
     type: z.literal("telegram"),
     botToken: z.string().min(1),
     chatId: z.string().min(1),
+    format: z.enum(["markdown", "text"]).default("markdown"),
   }),
   z.object({
     type: z.literal("wechat-work"),
     webhookUrl: z.string().url(),
+    format: z.enum(["markdown", "text"]).default("markdown"),
   }),
   z.object({
     type: z.literal("feishu"),
     webhookUrl: z.string().url(),
+    format: z.enum(["markdown", "text"]).default("markdown"),
   }),
   z.object({
     type: z.literal("webhook"),
     url: z.string().url(),
     secret: z.string().optional(),
     events: z.array(z.string()).default([]),
+    format: z.enum(["markdown", "text"]).default("markdown"),
   }),
 ]);
 
