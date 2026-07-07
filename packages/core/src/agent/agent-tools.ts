@@ -18,6 +18,7 @@ import { runInteractiveFilmCreation, runScriptCreation, runStoryboardCreation } 
 import { runResearchReport } from "../agents/researcher.js";
 import { ingestMaterial } from "../materials/ingest.js";
 import { retrieveMaterials } from "../materials/retrieve.js";
+import { loadChaptersFromPath } from "./chapter-import-source.js";
 import type { ScriptTargetFormat } from "../agents/script-storyboard.js";
 import { createPlayDB, type PlayGraphDB } from "../play/play-db-factory.js";
 import { PlayRunner, type PlayOpeningSeedResult, type PlayReplayResult, type PlayStepResult, type PlayVariantRestoreResult } from "../play/play-runner.js";
@@ -1057,6 +1058,100 @@ export function createRetrieveMaterialTool(projectRoot: string): AgentTool<typeo
           query: params.query,
           purpose: params.purpose,
           results,
+        },
+      );
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 5. Chapter Import Tool (import_chapters)
+// ---------------------------------------------------------------------------
+
+const ImportChaptersParams = Type.Object({
+  bookId: Type.Optional(Type.String({
+    description: "Target book ID to import into. In active-book sessions, omit it to use the current active book; if provided, it must match the active book. In general chat there is no active book, so it is required and must be an existing book.",
+  })),
+  sourcePath: Type.String({
+    description: "Local path of the chapter source: either the stored_path from the Uploaded Files block (project-relative, e.g. .inkos/uploads/<session>/novel.txt) or an absolute path on this machine that the user provided. A directory imports each .md/.txt file as one chapter in filename order; a single file is split into chapters automatically by heading lines.",
+  }),
+  splitPattern: Type.Optional(Type.String({
+    description: "Single-file mode only: custom JavaScript regex source matching chapter heading lines. Omit to use the default pattern, which matches \"第X章/第X回\" and \"Chapter N\" headings.",
+  })),
+  resumeFrom: Type.Optional(Type.Number({
+    description: "Resume an interrupted import from chapter N (1-based). Required when the book already has chapters: replay starts at chapter N and earlier chapters are kept. Omit for a fresh import into an empty book.",
+  })),
+  importMode: Type.Optional(Type.Union([
+    Type.Literal("continuation"),
+    Type.Literal("series"),
+  ], {
+    description: "continuation (default): the book picks up exactly where the imported text left off, no new spacetime. series: shared universe but an independent new story, so a new spacetime is generated.",
+  })),
+});
+
+type ImportChaptersParamsType = Static<typeof ImportChaptersParams>;
+
+export function createImportChaptersTool(
+  pipeline: PipelineRunner,
+  activeBookId: string | null,
+  projectRoot: string,
+): AgentTool<typeof ImportChaptersParams> {
+  return {
+    name: "import_chapters",
+    description:
+      "Import an existing novel's chapters from a local file or directory into an InkOS book as real chapters (not reference material). " +
+      "InkOS reverse-engineers foundation/truth files from the imported text and replays every chapter to rebuild story state, so the book can be continued afterwards. " +
+      "Use ingest_material instead when the user only wants to archive reference material without touching book chapters.",
+    label: "Import Chapters",
+    parameters: ImportChaptersParams,
+    async execute(
+      _toolCallId: string,
+      params: ImportChaptersParamsType,
+      _signal?: AbortSignal,
+      onUpdate?: AgentToolUpdateCallback,
+    ): Promise<AgentToolResult<unknown>> {
+      const targetBookId = resolveToolBookId("import_chapters", params.bookId, activeBookId);
+
+      const state = new StateManager(projectRoot);
+      const existingChapterCount = (await state.getNextChapterNumber(targetBookId)) - 1;
+      if (existingChapterCount > 0 && params.resumeFrom === undefined) {
+        throw new Error(
+          `Book "${targetBookId}" already has ${existingChapterCount} chapter(s). ` +
+          `Pass resumeFrom=<n> to resume/append from chapter n, or ask the user to clear the existing chapters first.`,
+        );
+      }
+
+      const resolvedSourcePath = isAbsolute(params.sourcePath)
+        ? params.sourcePath
+        : resolve(projectRoot, params.sourcePath);
+      onUpdate?.(textResult(`Reading chapters from ${resolvedSourcePath}...`));
+      const chapters = await loadChaptersFromPath(resolvedSourcePath, params.splitPattern);
+
+      onUpdate?.(textResult(`Found ${chapters.length} chapter(s); importing into "${targetBookId}"...`));
+      const result = await pipeline.importChapters({
+        bookId: targetBookId,
+        chapters,
+        resumeFrom: params.resumeFrom,
+        importMode: params.importMode,
+      });
+
+      const regeneratedFoundation = (params.resumeFrom ?? 1) === 1;
+      return textResult(
+        [
+          `Imported ${result.importedCount} chapter(s) into book "${result.bookId}".`,
+          `Total imported length: ${result.totalWords}. Next chapter to write: ${result.nextChapter}.`,
+          regeneratedFoundation
+            ? "Foundation and truth files were reverse-engineered from the imported text; chapter files and the chapter index were rebuilt by sequential replay."
+            : `Resumed replay from chapter ${params.resumeFrom}; earlier chapters and the existing foundation were kept.`,
+          `The book can now be continued with sub_agent(agent="writer") in the book session.`,
+        ].join("\n"),
+        {
+          kind: "chapters_imported",
+          bookId: result.bookId,
+          importedCount: result.importedCount,
+          totalWords: result.totalWords,
+          nextChapter: result.nextChapter,
+          importMode: params.importMode ?? "continuation",
         },
       );
     },

@@ -13,6 +13,7 @@ export {
   createInteractiveFilmCreationTool,
   createResearchWebTool,
   createIngestMaterialTool,
+  createImportChaptersTool,
   createGenerateCoverTool,
   createPlayStartTool,
   createPlayReviseTool,

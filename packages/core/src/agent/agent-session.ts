@@ -39,6 +39,7 @@ import {
   createResearchWebTool,
   createIngestMaterialTool,
   createRetrieveMaterialTool,
+  createImportChaptersTool,
 } from "./agent-tools.js";
 import { createFilmAuthoringTools, filmLLMDepsFromClient } from "./film-authoring-tools.js";
 import { createBookContextTransform } from "./context-transform.js";
@@ -757,6 +758,7 @@ function createAgentToolsForMode(params: {
   const researchTool = createResearchWebTool(params.projectRoot);
   const materialTool = createIngestMaterialTool(params.projectRoot);
   const materialRetrievalTool = createRetrieveMaterialTool(params.projectRoot);
+  const importChaptersTool = createImportChaptersTool(params.pipeline, params.bookId, params.projectRoot);
   const isConfirmed = (
     intent: NonNullable<AgentSessionConfig["requestedIntent"]>,
   ): boolean => {
@@ -765,7 +767,7 @@ function createAgentToolsForMode(params: {
   };
 
   if (params.sessionKind === "chat") {
-    return [proposalTool, researchTool, materialTool, materialRetrievalTool];
+    return [proposalTool, researchTool, materialTool, materialRetrievalTool, importChaptersTool];
   }
 
   if (params.sessionKind === "short") {
@@ -857,12 +859,13 @@ function createAgentToolsForMode(params: {
     researchTool,
     materialTool,
     materialRetrievalTool,
+    importChaptersTool,
     createGrepTool(params.projectRoot),
     createLsTool(params.projectRoot),
   ];
 
   if (params.sessionKind === "edit") {
-    return bookTools.filter((tool) => !["sub_agent", "generate_cover", "research_web"].includes(tool.name));
+    return bookTools.filter((tool) => !["sub_agent", "generate_cover", "research_web", "import_chapters"].includes(tool.name));
   }
 
   return bookTools;

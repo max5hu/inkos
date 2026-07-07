@@ -571,6 +571,7 @@ describe("runAgentSession cache — bookId switch", () => {
       "research_web",
       "ingest_material",
       "retrieve_material",
+      "import_chapters",
     ]);
   });
 
@@ -894,6 +895,7 @@ describe("runAgentSession cache — bookId switch", () => {
       "research_web",
       "ingest_material",
       "retrieve_material",
+      "import_chapters",
       "grep",
       "ls",
     ]);
