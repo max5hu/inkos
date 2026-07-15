@@ -26,6 +26,7 @@ const createLLMClientMock = vi.fn(() => ({}));
 const chatCompletionMock = vi.fn();
 const loadProjectConfigMock = vi.fn();
 const pipelineConfigs: unknown[] = [];
+const pipelineAbortSignals: Array<AbortSignal | undefined> = [];
 const processProjectInteractionRequestMock = vi.fn();
 const createInteractionToolsFromDepsMock = vi.fn(() => ({}));
 const loadProjectSessionMock = vi.fn();
@@ -196,6 +197,14 @@ vi.mock("@actalk/inkos-core", async (importOriginal) => {
     constructor(config: unknown) {
       pipelineConfigs.push(config);
     }
+
+    // 与真实 PipelineRunner.runWithAbortSignal 行为一致（入口检查一次 signal），
+    // 并把 signal 记录下来供测试断言"任务控制器的中止信号传进了写作流程"。
+    runWithAbortSignal = vi.fn(async (signal: AbortSignal | undefined, task: () => Promise<unknown>) => {
+      pipelineAbortSignals.push(signal);
+      signal?.throwIfAborted();
+      return task();
+    });
 
     initBook = initBookMock;
     runRadar = runRadarMock;
@@ -549,6 +558,7 @@ describe("createStudioServer daemon lifecycle", () => {
     saveChapterIndexMock.mockResolvedValue(undefined);
     rollbackToChapterMock.mockResolvedValue([]);
     pipelineConfigs.length = 0;
+    pipelineAbortSignals.length = 0;
     runAgentSessionMock.mockReset();
     abortAgentSessionMock.mockReset();
     playRunnerStepMock.mockReset();
@@ -3563,6 +3573,159 @@ describe("createStudioServer daemon lifecycle", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "BOOK_BUSY", message: lockError },
       response: lockError,
+    });
+  });
+
+  it("runs quick-action write-next through the background task system with persisted snapshots", async () => {
+    let resolveWrite!: (value: unknown) => void;
+    writeNextChapterMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveWrite = resolve;
+    }));
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const pendingResponse = app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+        sessionKind: "book",
+        actionSource: "quick-action",
+        requestedIntent: "write_next",
+      }),
+    });
+
+    // 写章期间：任务快照已写到磁盘，刷新后能恢复出运行中的任务卡
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "agent-session-1");
+      expect(task).toMatchObject({
+        requestedIntent: "write_next",
+        execution: { tool: "sub_agent", agent: "writer", status: "running" },
+      });
+    });
+
+    resolveWrite({
+      chapterNumber: 3,
+      title: "Rewritten Chapter",
+      wordCount: 1800,
+      revised: false,
+      status: "ready-for-review",
+      auditResult: { passed: true, issues: [], summary: "rewritten" },
+    });
+    const response = await pendingResponse;
+    const body = await response.json();
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(body.response).toContain("已为 demo-book 完成第 3 章");
+    await expect(loadStudioTaskSnapshot(root, "agent-session-1")).resolves.toMatchObject({
+      execution: {
+        tool: "sub_agent",
+        agent: "writer",
+        status: "completed",
+        completedAt: expect.any(Number),
+      },
+    });
+  });
+
+  it("aborts a running write-next task through POST /abort with the default all scope", async () => {
+    let rejectWrite!: (error: Error) => void;
+    writeNextChapterMock.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectWrite = reject;
+    }));
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const pendingResponse = app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+        sessionKind: "book",
+        actionSource: "quick-action",
+        requestedIntent: "write_next",
+      }),
+    });
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "agent-session-1");
+      expect(task?.execution.status).toBe("running");
+    });
+
+    const abortResponse = await app.request("http://localhost/api/v1/sessions/agent-session-1/abort", {
+      method: "POST",
+    });
+
+    expect(abortResponse.status).toBe(200);
+    await expect(abortResponse.json()).resolves.toMatchObject({ aborted: true });
+    // 任务控制器的中止信号已经通过 pipeline.runWithAbortSignal 传给了写章流程
+    expect(pipelineAbortSignals.at(-1)?.aborted).toBe(true);
+
+    // 真实 pipeline 会在下一个检查点抛出中止错误，这里手动模拟这次拒绝
+    rejectWrite(new Error("This operation was aborted"));
+    const response = await pendingResponse;
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    await expect(loadStudioTaskSnapshot(root, "agent-session-1")).resolves.toMatchObject({
+      execution: { status: "error", completedAt: expect.any(Number) },
+    });
+  });
+
+  it("rejects a second production task with 409 while write-next is still running", async () => {
+    let resolveWrite!: (value: unknown) => void;
+    writeNextChapterMock.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveWrite = resolve;
+    }));
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const pendingResponse = app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+        sessionKind: "book",
+        actionSource: "quick-action",
+        requestedIntent: "write_next",
+      }),
+    });
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "agent-session-1");
+      expect(task?.execution.status).toBe("running");
+    });
+
+    const second = await app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "继续",
+        activeBookId: "demo-book",
+        sessionId: "agent-session-1",
+        sessionKind: "book",
+        actionSource: "quick-action",
+        requestedIntent: "write_next",
+      }),
+    });
+
+    expect(second.status).toBe(409);
+    await expect(second.json()).resolves.toMatchObject({
+      error: { code: "PRODUCTION_TASK_ALREADY_RUNNING" },
+    });
+    expect(writeNextChapterMock).toHaveBeenCalledTimes(1);
+
+    resolveWrite({
+      chapterNumber: 3,
+      title: "Rewritten Chapter",
+      wordCount: 1800,
+      revised: false,
+      status: "ready-for-review",
+      auditResult: { passed: true, issues: [], summary: "rewritten" },
+    });
+    await pendingResponse;
+    await expect(loadStudioTaskSnapshot(root, "agent-session-1")).resolves.toMatchObject({
+      execution: { status: "completed" },
     });
   });
 
