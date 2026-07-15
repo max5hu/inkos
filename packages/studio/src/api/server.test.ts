@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadStudioTaskSnapshot, saveStudioTaskSnapshot } from "./task-store.js";
+import { loadStudioTaskSnapshot, saveStudioTaskSnapshot, studioTaskSnapshotPath } from "./task-store.js";
 
 const schedulerStartMock = vi.fn<() => Promise<void>>();
 const initBookMock = vi.fn();
@@ -3310,6 +3310,64 @@ describe("createStudioServer daemon lifecycle", () => {
 
     resolveRun();
     await pendingTask;
+  });
+
+  it("aborts the running production task and drops its snapshot when the session is deleted", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    createShortFictionRunToolMock.mockImplementationOnce(() => ({
+      name: "short_fiction_run",
+      execute: vi.fn(async (_id: string, _params: unknown, signal: AbortSignal) => {
+        capturedSignal = signal;
+        // 模拟真实 pipeline：任务挂起，直到中止信号到来才在检查点抛出中止错误
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("This operation was aborted")));
+        });
+        return { content: [{ type: "text", text: "unreachable" }] };
+      }),
+    }));
+    loadBookSessionMock.mockResolvedValue({
+      sessionId: "deleted-task-session",
+      bookId: null,
+      sessionKind: "short",
+      title: null,
+      messages: [],
+      events: [],
+      draftRounds: [],
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const { createStudioServer } = await import("./server.js");
+    const app = createStudioServer(cloneProjectConfig() as never, root);
+
+    const pendingTask = app.request("http://localhost/api/v1/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: "写一篇冷库账本短篇。",
+        sessionId: "deleted-task-session",
+        sessionKind: "short",
+        actionSource: "button",
+        requestedIntent: "short_run",
+        actionPayload: { shortRun: { direction: "冷库账本悬疑", cover: false } },
+      }),
+    });
+    await vi.waitFor(async () => {
+      const task = await loadStudioTaskSnapshot(root, "deleted-task-session");
+      expect(task?.execution.status).toBe("running");
+    });
+
+    const deleteResponse = await app.request("http://localhost/api/v1/sessions/deleted-task-session", {
+      method: "DELETE",
+    });
+
+    expect(deleteResponse.status).toBe(200);
+    // 删除会话必须同时中止它的生产任务
+    expect(capturedSignal?.aborted).toBe(true);
+
+    // 等任务的错误路径走完：中止后的错误持久化不能把已删除会话的快照重建出来
+    const response = await pendingTask;
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    await expect(access(studioTaskSnapshotPath(root, "deleted-task-session"))).rejects.toThrow();
   });
 
   it("executes confirmed play-start action directly without asking the chat model to call tools", async () => {

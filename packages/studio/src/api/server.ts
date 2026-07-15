@@ -2619,12 +2619,16 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   const state = new StateManager(root);
   let cachedConfig = initialConfig;
   const activeConfirmedTasks = new Map<string, AbortController>();
+  // 已删除会话的 sessionId：删除会话时中止其生产任务，任务随后的错误持久化
+  // 不能把快照文件重新写回来（给已删除的会话"还魂"）。同名会话重新创建时移除标记。
+  const deletedSessionIds = new Set<string>();
 
   const persistConfirmedTask = async (
     sessionId: string,
     requestedIntent: RequestedIntent,
     exec: CollectedToolExec,
   ): Promise<void> => {
+    if (deletedSessionIds.has(sessionId)) return;
     const snapshot: StudioTaskSnapshot = {
       version: 1,
       sessionId,
@@ -4316,6 +4320,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       sessionKind,
       ...(playMode ? [{ playMode }] as const : []),
     );
+    // 客户端可以用同一个 sessionId 重新创建会话：移除删除标记，
+    // 让新会话的生产任务可以正常持久化快照。
+    deletedSessionIds.delete(session.sessionId);
     return c.json({ session });
   });
 
@@ -4354,6 +4361,12 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
 
   app.delete("/api/v1/sessions/:sessionId", async (c) => {
     const sessionId = c.req.param("sessionId");
+    // 先标记删除，再中止任务：任务被中止后的错误持久化会检查这个标记，
+    // 不会把已删除会话的快照文件重建出来。
+    deletedSessionIds.add(sessionId);
+    const task = await loadReconciledTaskSnapshot(sessionId);
+    const controller = task ? activeConfirmedTasks.get(task.execution.id) : undefined;
+    controller?.abort();
     await Promise.all([
       deleteBookSession(root, sessionId),
       deleteStudioTaskSnapshot(root, sessionId),
