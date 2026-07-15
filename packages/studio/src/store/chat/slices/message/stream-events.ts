@@ -311,14 +311,19 @@ export function attachSessionStreamListeners({
       if (!running && !hasInFlightExecution(get().sessions[sessionId]?.messages ?? [], execution.id)) {
         return;
       }
+      // 聊天轮正在流式时收到终态快照（任务刚结束、新连接建立时服务端重放）：
+      // 只收尾任务卡，连接与流式状态保持不动，由聊天轮自己收尾——否则会把
+      // 正在跑的聊天流关掉，本轮增量全部丢失。
+      const chatStreaming = Boolean(get().sessions[sessionId]?.isChatStreaming);
+      const keepStream = running || chatStreaming;
       set((state) => ({
         sessions: updateSession(state.sessions, sessionId, (runtime) => ({
           messages: mergeTaskExecution(runtime.messages, execution),
-          isStreaming: running,
-          stream: running ? runtime.stream : null,
+          isStreaming: keepStream,
+          stream: keepStream ? runtime.stream : null,
         })),
       }));
-      if (!running) streamEs.close();
+      if (!keepStream) streamEs.close();
     } catch {
       // ignore
     }

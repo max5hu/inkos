@@ -538,6 +538,56 @@ describe("chat message actions", () => {
     expect(store.getState().sessions[sessionId]).toMatchObject({ isStreaming: false, stream: null });
   });
 
+  it("keeps the streaming chat open when a terminal task snapshot lands mid-chat", async () => {
+    const store = createTestStore();
+    const sessionId = await setupRunningTaskSession(store);
+
+    let resolveAgent!: (value: unknown) => void;
+    fetchJson.mockClear();
+    fetchJson.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveAgent = resolve;
+    }));
+
+    const sent = store.getState().sendMessage(sessionId, "顺便聊两句");
+    await vi.waitFor(() => expect(fakeEventSources).toHaveLength(2));
+
+    // 竞态：任务刚结束、消息里还有 in-flight 任务卡，此刻聊天轮建立的新连接
+    // 收到服务端重放的终态快照。任务卡要收尾，但正在流式的聊天连接不能被关掉。
+    fakeEventSources[1]?.emit("task:snapshot", {
+      sessionId,
+      execution: {
+        id: "direct-short_run-1",
+        tool: "short_fiction_run",
+        label: "短篇生产",
+        status: "completed",
+        startedAt: 10,
+        completedAt: 40,
+        result: "短篇已完成",
+      },
+    });
+
+    // 任务卡转为 completed
+    expect(findTaskExecution(store, sessionId)).toMatchObject({
+      status: "completed",
+      result: "短篇已完成",
+    });
+    // 聊天轮仍在流式：连接未关、流式状态保持
+    expect(fakeEventSources[1]?.closed).toBe(false);
+    expect(store.getState().sessions[sessionId]).toMatchObject({ isStreaming: true, isChatStreaming: true });
+    expect(store.getState().sessions[sessionId]?.stream).not.toBeNull();
+
+    resolveAgent({ response: "聊完了。", session: { sessionId, sessionKind: "short" } });
+    await sent;
+
+    // 聊天轮自己收尾：任务已完成，连接关闭
+    expect(store.getState().sessions[sessionId]).toMatchObject({
+      isStreaming: false,
+      isChatStreaming: false,
+      stream: null,
+    });
+    expect(fakeEventSources[1]?.closed).toBe(true);
+  });
+
   it("closes the stream after a plain chat round when no production task is running", async () => {
     const store = createTestStore();
     const sessionId = store.getState().createDraftSession(null, "chat");
