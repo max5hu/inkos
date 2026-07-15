@@ -3803,6 +3803,13 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("aborts the running production task and drops its snapshot when the session is deleted", async () => {
+    // 用真实 transcript / 真实删除验证文件层行为：删除会话后，任务收尾的
+    // 助手消息追加不能把 transcript 文件和 sessions 目录条目重建出来。
+    const actual = await wireRealSessionTranscript();
+    deleteBookSessionMock.mockImplementation(
+      (projectRoot: string, sessionId: string) => actual.deleteBookSession(projectRoot, sessionId),
+    );
+    await actual.createAndPersistBookSession(root, null, "deleted-task-session", "short");
     let capturedSignal: AbortSignal | undefined;
     createShortFictionRunToolMock.mockImplementationOnce(() => ({
       name: "short_fiction_run",
@@ -3815,17 +3822,6 @@ describe("createStudioServer daemon lifecycle", () => {
         return { content: [{ type: "text", text: "unreachable" }] };
       }),
     }));
-    loadBookSessionMock.mockResolvedValue({
-      sessionId: "deleted-task-session",
-      bookId: null,
-      sessionKind: "short",
-      title: null,
-      messages: [],
-      events: [],
-      draftRounds: [],
-      createdAt: 1,
-      updatedAt: 1,
-    });
     const { createStudioServer } = await import("./server.js");
     const app = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -3858,6 +3854,10 @@ describe("createStudioServer daemon lifecycle", () => {
     const response = await pendingTask;
     expect(response.status).toBeGreaterThanOrEqual(400);
     await expect(access(studioTaskSnapshotPath(root, "deleted-task-session"))).rejects.toThrow();
+    // 任务失败路径的助手消息追加也不能把已删除会话的 transcript 文件与
+    // sessions 目录条目重建出来（appendTranscriptEvents 底层是 mkdir+appendFile）
+    await expect(access(actual.transcriptPath(root, "deleted-task-session"))).rejects.toThrow();
+    await expect(actual.loadBookSession(root, "deleted-task-session")).resolves.toBeNull();
   });
 
   // 制造"controller 已注册、磁盘还没有任务快照"的窗口：任务开始时预写用户

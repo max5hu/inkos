@@ -2635,6 +2635,21 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
   // 不能把快照文件重新写回来（给已删除的会话"还魂"）。同名会话重新创建时移除标记。
   const deletedSessionIds = new Set<string>();
 
+  // 已删除会话不再追加 transcript 消息：appendManualSessionMessages 底层的
+  // appendTranscriptEvents 是 mkdir + appendFile，会把已删除会话的 sessions
+  // 目录条目和 transcript 文件重建出来（任务成功/失败的收尾追加正好落在删除
+  // 之后）。所有手动追加统一走这个守卫。
+  const appendSessionMessagesUnlessDeleted: typeof appendManualSessionMessages = async (
+    projectRoot,
+    sessionId,
+    messages,
+    input,
+    options,
+  ) => {
+    if (deletedSessionIds.has(sessionId)) return;
+    await appendManualSessionMessages(projectRoot, sessionId, messages, input, options);
+  };
+
   const persistConfirmedTask = async (
     sessionId: string,
     requestedIntent: RequestedIntent,
@@ -4533,6 +4548,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
       const titleBeforeRun = bookSession.title;
       let sessionTitleBroadcasted = false;
       const refreshBookSessionFromTranscript = async (): Promise<void> => {
+        // 会话已删除：磁盘上没有 transcript 可刷，也不该再广播它的标题。
+        if (deletedSessionIds.has(bookSession.sessionId)) return;
         const refreshed = await loadBookSession(root, bookSession.sessionId);
         if (refreshed) {
           bookSession = refreshed;
@@ -4552,7 +4569,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           })
         : null;
       if (externalEdit) {
-        await appendManualSessionMessages(root, bookSession.sessionId, [{
+        await appendSessionMessagesUnlessDeleted(root, bookSession.sessionId, [{
           role: "assistant",
           content: [{ type: "text", text: externalEdit.responseText }],
           api: "anthropic-messages",
@@ -4764,7 +4781,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           // 刷新页面时，用户气泡能从 transcript 恢复；并行聊天随后写入的消息
           // 也会按真实时间排在指令之后。完成/失败路径只追加助手工具消息
           //（instruction 传空字符串），指令不会写第二遍。
-          await appendManualSessionMessages(root, bookSession.sessionId, [{
+          await appendSessionMessagesUnlessDeleted(root, bookSession.sessionId, [{
             role: "user",
             content: instruction,
             timestamp: Date.now(),
@@ -4813,7 +4830,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           const responseText = exec.result ?? pick(surfaceLanguage, "已完成。", "Done.");
           const responseForUser = suppressManualTextForTool(exec) ? "" : responseText;
           // 指令已在任务开始时写入 transcript，这里只补助手工具消息。
-          await appendManualSessionMessages(root, bookSession.sessionId, [
+          await appendSessionMessagesUnlessDeleted(root, bookSession.sessionId, [
             manualToolAssistantMessage(
               responseText,
               exec,
@@ -4841,7 +4858,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string, o
           }
           if (error instanceof ConfirmedActionExecutionError) {
             // 指令已在任务开始时写入 transcript，失败时同样只补助手工具消息。
-            await appendManualSessionMessages(root, bookSession.sessionId, [
+            await appendSessionMessagesUnlessDeleted(root, bookSession.sessionId, [
               manualToolAssistantMessage(
                 message,
                 error.exec,
